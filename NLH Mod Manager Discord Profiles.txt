@@ -1,0 +1,3 @@
+# Discord ID | state
+# The V1.1 application contains the approved Discord, Steam, and EA identifiers.
+640917374610178059|visible
