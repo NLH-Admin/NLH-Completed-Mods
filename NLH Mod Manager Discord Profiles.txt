@@ -1,3 +1,0 @@
-# Discord ID | state
-# Add IDs to the V1.1 allowlist before enabling them here.
-640917374610178059|visible
