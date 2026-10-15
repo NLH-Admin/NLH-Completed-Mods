@@ -11,9 +11,9 @@ on:
       - "*_Private.txt"
       - "*_Changelog.txt"
       - "NLH Mod Manager*.vbs"
-      - "NLH Mod Manager*.txt"
+      - "NLH Mod Manager Squad Profiles.txt"
       - "NLH_MM.ico"
-      - ".github/workflows/update-nlh-release-index.yml"
+      - ".github/workflows/update-release-index.yml"
 
 permissions:
   contents: write
@@ -51,12 +51,7 @@ jobs:
 
           INDEX_HEADER = "NLH-REPOSITORY-INDEX|1"
 
-
           MANAGER_PACKAGE_NAME = "NLH Mod Manager.vbs"
-
-          STANDALONE_LAUNCHER_NAME = (
-              "NLH Mod Manager LAUNCHER.vbs"
-          )
 
           SQUAD_PROFILES_NAME = (
               "NLH Mod Manager Squad Profiles.txt"
@@ -182,16 +177,16 @@ jobs:
               if path.parent != ROOT:
                   return False
 
-              if path.name.casefold() == INDEX_PATH.name.casefold():
+              if (
+                  path.name.casefold()
+                  == INDEX_PATH.name.casefold()
+              ):
                   return False
 
               name = path.name
               folded = name.casefold()
 
               if folded == MANAGER_PACKAGE_NAME.casefold():
-                  return True
-
-              if folded == STANDALONE_LAUNCHER_NAME.casefold():
                   return True
 
               if folded == SQUAD_PROFILES_NAME.casefold():
@@ -228,14 +223,6 @@ jobs:
                       "version": None,
                       "character": None,
                       "base_name": "NLH Mod Manager",
-                  }
-
-              if folded == STANDALONE_LAUNCHER_NAME.casefold():
-                  return {
-                      "type": "LAUNCHER",
-                      "version": None,
-                      "character": None,
-                      "base_name": "NLH Mod Manager LAUNCHER",
                   }
 
               if folded == SQUAD_PROFILES_NAME.casefold():
@@ -434,14 +421,13 @@ jobs:
 
           type_order = {
               "MANAGER": 0,
-              "LAUNCHER": 1,
-              "RELEASE": 2,
-              "RELEASE_PRIVATE": 3,
-              "SQUAD_PROFILES": 4,
-              "ICON": 5,
-              "MOD": 6,
-              "PRIVATE": 7,
-              "CHANGELOG": 8,
+              "RELEASE": 1,
+              "RELEASE_PRIVATE": 2,
+              "SQUAD_PROFILES": 3,
+              "ICON": 4,
+              "MOD": 5,
+              "PRIVATE": 6,
+              "CHANGELOG": 7,
           }
 
           records.sort(
@@ -454,26 +440,18 @@ jobs:
           )
 
 
-          required_types = {
-              "MANAGER": 1,
-              "LAUNCHER": 1,
-          }
+          manager_count = sum(
+              1
+              for record in records
+              if record["type"] == "MANAGER"
+          )
 
-          for record_type, expected_count in (
-              required_types.items()
-          ):
-              actual_count = sum(
-                  1
-                  for record in records
-                  if record["type"] == record_type
+          if manager_count != 1:
+              raise RuntimeError(
+                  "Expected exactly one "
+                  "NLH Mod Manager.vbs record, "
+                  f"found {manager_count}."
               )
-
-              if actual_count != expected_count:
-                  raise RuntimeError(
-                      f"Expected {expected_count} "
-                      f"{record_type} record, "
-                      f"found {actual_count}."
-                  )
 
 
           release_count = sum(
@@ -693,16 +671,27 @@ jobs:
                   )
 
 
-          required_names = {
-              "NLH Mod Manager.vbs".casefold(),
-              "NLH Mod Manager LAUNCHER.vbs".casefold(),
-          }
+          required_manager = (
+              "NLH Mod Manager.vbs".casefold()
+          )
 
-          missing = required_names.difference(names)
-
-          if missing:
+          if required_manager not in names:
               raise SystemExit(
-                  f"Required files are absent: {sorted(missing)}"
+                  "NLH Mod Manager.vbs is absent "
+                  "from the index."
+              )
+
+
+          manager_count = sum(
+              1
+              for record in records
+              if record["type"] == "MANAGER"
+          )
+
+          if manager_count != 1:
+              raise SystemExit(
+                  "The index must contain exactly one "
+                  "MANAGER record."
               )
 
 
