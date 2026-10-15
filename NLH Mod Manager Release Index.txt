@@ -1,3 +1,1 @@
-NLH Mod Manager Public Release V1.0.vbs
-NLH Mod Manager Public Release V1.1.vbs
 NLH Mod Manager Public Release V1.1_Private.txt
