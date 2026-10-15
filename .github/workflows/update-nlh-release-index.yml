@@ -7,11 +7,20 @@ on:
     branches:
       - main
     paths:
-      - "NLH Mod Manager Public Release V*.vbs"
-      - "NLH Mod Manager Public Release V*_Private.txt"
+      - "*.zip"
+      - "*_Private.txt"
+      - "*_Changelog.txt"
+      - "NLH Mod Manager*.vbs"
+      - "NLH Mod Manager*.txt"
+      - "NLH_MM.ico"
+      - ".github/workflows/update-nlh-release-index.yml"
 
 permissions:
   contents: write
+
+concurrency:
+  group: update-nlh-release-index-main
+  cancel-in-progress: false
 
 jobs:
   update-release-index:
@@ -23,78 +32,693 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Generate release index
+      - name: Generate complete release index
         shell: bash
         run: |
           python3 <<'PY'
           from pathlib import Path
+          from urllib.parse import quote
+          import hashlib
           import re
+          import subprocess
 
-          release_pattern = re.compile(
+
+          ROOT = Path(".")
+
+          INDEX_PATH = Path(
+              "NLH Mod Manager Release Index.txt"
+          )
+
+          INDEX_HEADER = "NLH-REPOSITORY-INDEX|1"
+
+
+          MANAGER_PACKAGE_NAME = "NLH Mod Manager.vbs"
+
+          STANDALONE_LAUNCHER_NAME = (
+              "NLH Mod Manager LAUNCHER.vbs"
+          )
+
+          SQUAD_PROFILES_NAME = (
+              "NLH Mod Manager Squad Profiles.txt"
+          )
+
+          MANAGER_ICON_NAME = "NLH_MM.ico"
+
+
+          RELEASE_PATTERN = re.compile(
               r"^NLH Mod Manager Public Release V"
-              r"((?:[1-9]\d?)\.[0-9])"
+              r"(?P<version>(?:[1-9]\d?)\.[0-9])"
               r"\.vbs$",
               re.IGNORECASE,
           )
 
-          private_pattern = re.compile(
+          RELEASE_PRIVATE_PATTERN = re.compile(
               r"^NLH Mod Manager Public Release V"
-              r"((?:[1-9]\d?)\.[0-9])"
+              r"(?P<version>(?:[1-9]\d?)\.[0-9])"
               r"_Private\.txt$",
               re.IGNORECASE,
           )
 
-          entries = []
+          MOD_PATTERN = re.compile(
+              r"^(?P<character>.+)_"
+              r"(?P<version>[^_]+)"
+              r"\.zip$",
+              re.IGNORECASE,
+          )
 
-          for path in Path(".").iterdir():
+          PRIVATE_PATTERN = re.compile(
+              r"^(?P<base>.+)_Private\.txt$",
+              re.IGNORECASE,
+          )
+
+          CHANGELOG_PATTERN = re.compile(
+              r"^(?P<base>.+)_Changelog\.txt$",
+              re.IGNORECASE,
+          )
+
+
+          def git_blob_sha(path: Path) -> str:
+              result = subprocess.run(
+                  [
+                      "git",
+                      "hash-object",
+                      "--",
+                      path.as_posix(),
+                  ],
+                  check=True,
+                  capture_output=True,
+                  text=True,
+              )
+
+              value = result.stdout.strip().lower()
+
+              if not re.fullmatch(r"[0-9a-f]{40}", value):
+                  raise RuntimeError(
+                      f"Invalid Git blob SHA for {path.name}"
+                  )
+
+              return value
+
+
+          def sha256_file(path: Path) -> str:
+              digest = hashlib.sha256()
+
+              with path.open("rb") as stream:
+                  while True:
+                      block = stream.read(1024 * 1024)
+
+                      if not block:
+                          break
+
+                      digest.update(block)
+
+              return digest.hexdigest()
+
+
+          def encode_raw_path(path: Path) -> str:
+              return "/".join(
+                  quote(part, safe="")
+                  for part in path.parts
+              )
+
+
+          def clean_field(value) -> str:
+              if value is None:
+                  return ""
+
+              text = str(value)
+
+              if (
+                  "|" in text
+                  or "\r" in text
+                  or "\n" in text
+              ):
+                  raise RuntimeError(
+                      f"Invalid index field: {text!r}"
+                  )
+
+              return text
+
+
+          def version_sort_key(version: str | None) -> tuple:
+              if not version:
+                  return ()
+
+              numbers = re.findall(r"\d+", version)
+
+              if numbers:
+                  return tuple(
+                      int(number)
+                      for number in numbers
+                  )
+
+              return (version.casefold(),)
+
+
+          def should_index(path: Path) -> bool:
               if not path.is_file():
-                  continue
+                  return False
 
-              release_match = release_pattern.fullmatch(path.name)
-              private_match = private_pattern.fullmatch(path.name)
+              if path.parent != ROOT:
+                  return False
+
+              if path.name.casefold() == INDEX_PATH.name.casefold():
+                  return False
+
+              name = path.name
+              folded = name.casefold()
+
+              if folded == MANAGER_PACKAGE_NAME.casefold():
+                  return True
+
+              if folded == STANDALONE_LAUNCHER_NAME.casefold():
+                  return True
+
+              if folded == SQUAD_PROFILES_NAME.casefold():
+                  return True
+
+              if folded == MANAGER_ICON_NAME.casefold():
+                  return True
+
+              if RELEASE_PATTERN.fullmatch(name):
+                  return True
+
+              if RELEASE_PRIVATE_PATTERN.fullmatch(name):
+                  return True
+
+              if MOD_PATTERN.fullmatch(name):
+                  return True
+
+              if PRIVATE_PATTERN.fullmatch(name):
+                  return True
+
+              if CHANGELOG_PATTERN.fullmatch(name):
+                  return True
+
+              return False
+
+
+          def classify(path: Path) -> dict:
+              name = path.name
+              folded = name.casefold()
+
+              if folded == MANAGER_PACKAGE_NAME.casefold():
+                  return {
+                      "type": "MANAGER",
+                      "version": None,
+                      "character": None,
+                      "base_name": "NLH Mod Manager",
+                  }
+
+              if folded == STANDALONE_LAUNCHER_NAME.casefold():
+                  return {
+                      "type": "LAUNCHER",
+                      "version": None,
+                      "character": None,
+                      "base_name": "NLH Mod Manager LAUNCHER",
+                  }
+
+              if folded == SQUAD_PROFILES_NAME.casefold():
+                  return {
+                      "type": "SQUAD_PROFILES",
+                      "version": None,
+                      "character": None,
+                      "base_name": (
+                          "NLH Mod Manager Squad Profiles"
+                      ),
+                  }
+
+              if folded == MANAGER_ICON_NAME.casefold():
+                  return {
+                      "type": "ICON",
+                      "version": None,
+                      "character": None,
+                      "base_name": "NLH_MM",
+                  }
+
+              release_match = RELEASE_PATTERN.fullmatch(name)
 
               if release_match:
-                  major, minor = map(
-                      int,
-                      release_match.group(1).split("."),
+                  version = release_match.group("version")
+
+                  return {
+                      "type": "RELEASE",
+                      "version": version,
+                      "character": None,
+                      "base_name": (
+                          "NLH Mod Manager Public Release "
+                          f"V{version}"
+                      ),
+                  }
+
+              release_private_match = (
+                  RELEASE_PRIVATE_PATTERN.fullmatch(name)
+              )
+
+              if release_private_match:
+                  version = release_private_match.group(
+                      "version"
                   )
 
-                  entries.append(
-                      (major, minor, 0, path.name)
+                  return {
+                      "type": "RELEASE_PRIVATE",
+                      "version": version,
+                      "character": None,
+                      "base_name": (
+                          "NLH Mod Manager Public Release "
+                          f"V{version}"
+                      ),
+                  }
+
+              mod_match = MOD_PATTERN.fullmatch(name)
+
+              if mod_match:
+                  return {
+                      "type": "MOD",
+                      "version": (
+                          mod_match.group("version").strip()
+                      ),
+                      "character": (
+                          mod_match.group("character").strip()
+                      ),
+                      "base_name": name[:-4],
+                  }
+
+              private_match = PRIVATE_PATTERN.fullmatch(name)
+
+              if private_match:
+                  return {
+                      "type": "PRIVATE",
+                      "version": None,
+                      "character": None,
+                      "base_name": (
+                          private_match.group("base").strip()
+                      ),
+                  }
+
+              changelog_match = CHANGELOG_PATTERN.fullmatch(
+                  name
+              )
+
+              if changelog_match:
+                  return {
+                      "type": "CHANGELOG",
+                      "version": None,
+                      "character": None,
+                      "base_name": (
+                          changelog_match.group("base").strip()
+                      ),
+                  }
+
+              raise RuntimeError(
+                  f"Managed file could not be classified: {name}"
+              )
+
+
+          paths = sorted(
+              (
+                  path
+                  for path in ROOT.iterdir()
+                  if should_index(path)
+              ),
+              key=lambda path: path.name.casefold(),
+          )
+
+          if not paths:
+              raise RuntimeError(
+                  "No managed repository files were found."
+              )
+
+
+          paths_by_name = {}
+
+          for path in paths:
+              key = path.name.casefold()
+
+              if key in paths_by_name:
+                  raise RuntimeError(
+                      "Case-insensitive duplicate filenames: "
+                      f"{paths_by_name[key].name!r} and "
+                      f"{path.name!r}"
                   )
 
-              elif private_match:
-                  major, minor = map(
-                      int,
-                      private_match.group(1).split("."),
+              paths_by_name[key] = path
+
+
+          records = []
+
+          for path in paths:
+              metadata = classify(path)
+
+              private_metadata = None
+              changelog = None
+
+              if metadata["type"] == "MOD":
+                  private_candidate = Path(
+                      f"{metadata['base_name']}_Private.txt"
                   )
 
-                  entries.append(
-                      (major, minor, 1, path.name)
+                  changelog_candidate = Path(
+                      f"{metadata['base_name']}_Changelog.txt"
                   )
 
-          entries.sort(
-              key=lambda entry: (
-                  entry[0],
-                  entry[1],
-                  entry[2],
-                  entry[3].lower(),
+                  private_key = (
+                      private_candidate.name.casefold()
+                  )
+
+                  changelog_key = (
+                      changelog_candidate.name.casefold()
+                  )
+
+                  if private_key in paths_by_name:
+                      private_metadata = (
+                          paths_by_name[private_key].name
+                      )
+
+                  if changelog_key in paths_by_name:
+                      changelog = (
+                          paths_by_name[changelog_key].name
+                      )
+
+              elif metadata["type"] == "RELEASE":
+                  private_candidate = Path(
+                      "NLH Mod Manager Public Release "
+                      f"V{metadata['version']}_Private.txt"
+                  )
+
+                  private_key = (
+                      private_candidate.name.casefold()
+                  )
+
+                  if private_key in paths_by_name:
+                      private_metadata = (
+                          paths_by_name[private_key].name
+                      )
+
+              records.append(
+                  {
+                      "type": metadata["type"],
+                      "name": path.name,
+                      "raw_path": encode_raw_path(path),
+                      "git_blob_sha": git_blob_sha(path),
+                      "sha256": sha256_file(path),
+                      "size": path.stat().st_size,
+                      "version": metadata["version"],
+                      "character": metadata["character"],
+                      "base_name": metadata["base_name"],
+                      "private_metadata": private_metadata,
+                      "changelog": changelog,
+                  }
+              )
+
+
+          type_order = {
+              "MANAGER": 0,
+              "LAUNCHER": 1,
+              "RELEASE": 2,
+              "RELEASE_PRIVATE": 3,
+              "SQUAD_PROFILES": 4,
+              "ICON": 5,
+              "MOD": 6,
+              "PRIVATE": 7,
+              "CHANGELOG": 8,
+          }
+
+          records.sort(
+              key=lambda record: (
+                  type_order.get(record["type"], 99),
+                  version_sort_key(record["version"]),
+                  (record["character"] or "").casefold(),
+                  record["name"].casefold(),
               )
           )
 
-          output = "\n".join(
-              entry[3] for entry in entries
+
+          required_types = {
+              "MANAGER": 1,
+              "LAUNCHER": 1,
+          }
+
+          for record_type, expected_count in (
+              required_types.items()
+          ):
+              actual_count = sum(
+                  1
+                  for record in records
+                  if record["type"] == record_type
+              )
+
+              if actual_count != expected_count:
+                  raise RuntimeError(
+                      f"Expected {expected_count} "
+                      f"{record_type} record, "
+                      f"found {actual_count}."
+                  )
+
+
+          release_count = sum(
+              1
+              for record in records
+              if record["type"] == "RELEASE"
           )
 
-          if output:
-              output += "\n"
+          if release_count == 0:
+              raise RuntimeError(
+                  "No manager releases were found."
+              )
 
-          Path(
-              "NLH Mod Manager Release Index.txt"
-          ).write_text(
-              output,
+
+          lines = [
+              INDEX_HEADER,
+              (
+                  "#TYPE|NAME|RAW_PATH|GIT_BLOB_SHA|SHA256|"
+                  "SIZE|VERSION|CHARACTER|BASE_NAME|"
+                  "PRIVATE_METADATA|CHANGELOG"
+              ),
+          ]
+
+          for record in records:
+              fields = [
+                  record["type"],
+                  record["name"],
+                  record["raw_path"],
+                  record["git_blob_sha"],
+                  record["sha256"],
+                  record["size"],
+                  record["version"],
+                  record["character"],
+                  record["base_name"],
+                  record["private_metadata"],
+                  record["changelog"],
+              ]
+
+              lines.append(
+                  "|".join(
+                      clean_field(field)
+                      for field in fields
+                  )
+              )
+
+
+          INDEX_PATH.write_text(
+              "\n".join(lines) + "\n",
               encoding="utf-8",
               newline="\n",
+          )
+
+          print(
+              f"Wrote {INDEX_PATH} with "
+              f"{len(records)} records."
+          )
+          PY
+
+      - name: Validate complete release index
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import hashlib
+          import re
+          import subprocess
+
+
+          index_path = Path(
+              "NLH Mod Manager Release Index.txt"
+          )
+
+          lines = index_path.read_text(
+              encoding="utf-8"
+          ).splitlines()
+
+          if not lines:
+              raise SystemExit(
+                  "Release index is empty."
+              )
+
+          if lines[0] != "NLH-REPOSITORY-INDEX|1":
+              raise SystemExit(
+                  "Unexpected release index header."
+              )
+
+
+          records = []
+
+          for line_number, line in enumerate(
+              lines[1:],
+              start=2,
+          ):
+              if not line or line.startswith("#"):
+                  continue
+
+              fields = line.split("|")
+
+              if len(fields) != 11:
+                  raise SystemExit(
+                      f"Line {line_number} has "
+                      f"{len(fields)} fields instead of 11."
+                  )
+
+              (
+                  record_type,
+                  name,
+                  raw_path,
+                  git_blob_sha,
+                  sha256,
+                  size_text,
+                  version,
+                  character,
+                  base_name,
+                  private_metadata,
+                  changelog,
+              ) = fields
+
+              try:
+                  size = int(size_text)
+              except ValueError as error:
+                  raise SystemExit(
+                      f"Invalid size on line {line_number}."
+                  ) from error
+
+              records.append(
+                  {
+                      "type": record_type,
+                      "name": name,
+                      "raw_path": raw_path,
+                      "git_blob_sha": git_blob_sha,
+                      "sha256": sha256,
+                      "size": size,
+                      "version": version,
+                      "character": character,
+                      "base_name": base_name,
+                      "private_metadata": private_metadata,
+                      "changelog": changelog,
+                  }
+              )
+
+
+          if not records:
+              raise SystemExit(
+                  "Release index contains no records."
+              )
+
+
+          names = set()
+
+          for record in records:
+              name = record["name"]
+              key = name.casefold()
+
+              if key in names:
+                  raise SystemExit(
+                      f"Duplicate indexed filename: {name}"
+                  )
+
+              names.add(key)
+
+              path = Path(name)
+
+              if not path.is_file():
+                  raise SystemExit(
+                      f"Indexed file is missing: {name}"
+                  )
+
+              if path.stat().st_size != record["size"]:
+                  raise SystemExit(
+                      f"Size mismatch for {name}"
+                  )
+
+              actual_blob_sha = subprocess.run(
+                  [
+                      "git",
+                      "hash-object",
+                      "--",
+                      path.as_posix(),
+                  ],
+                  check=True,
+                  capture_output=True,
+                  text=True,
+              ).stdout.strip().lower()
+
+              if (
+                  actual_blob_sha
+                  != record["git_blob_sha"]
+              ):
+                  raise SystemExit(
+                      f"Git blob SHA mismatch for {name}"
+                  )
+
+              actual_sha256 = hashlib.sha256(
+                  path.read_bytes()
+              ).hexdigest()
+
+              if actual_sha256 != record["sha256"]:
+                  raise SystemExit(
+                      f"SHA-256 mismatch for {name}"
+                  )
+
+              if not re.fullmatch(
+                  r"[0-9a-f]{40}",
+                  record["git_blob_sha"],
+              ):
+                  raise SystemExit(
+                      f"Invalid Git blob SHA for {name}"
+                  )
+
+              if not re.fullmatch(
+                  r"[0-9a-f]{64}",
+                  record["sha256"],
+              ):
+                  raise SystemExit(
+                      f"Invalid SHA-256 for {name}"
+                  )
+
+
+          required_names = {
+              "NLH Mod Manager.vbs".casefold(),
+              "NLH Mod Manager LAUNCHER.vbs".casefold(),
+          }
+
+          missing = required_names.difference(names)
+
+          if missing:
+              raise SystemExit(
+                  f"Required files are absent: {sorted(missing)}"
+              )
+
+
+          release_count = sum(
+              1
+              for record in records
+              if record["type"] == "RELEASE"
+          )
+
+          if release_count == 0:
+              raise SystemExit(
+                  "No manager releases are indexed."
+              )
+
+          print(
+              f"Validated {len(records)} index records."
           )
           PY
 
