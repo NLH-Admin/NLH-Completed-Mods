@@ -1,3 +1,14 @@
-NLH Mod Manager Public Release V1.0.vbs
-NLH Mod Manager Public Release V1.1.vbs
-NLH Mod Manager Public Release V1.1_Private.txt
+NLH-REPOSITORY-INDEX|1
+#TYPE|NAME|RAW_PATH|GIT_BLOB_SHA|SHA256|SIZE|VERSION|CHARACTER|BASE_NAME|PRIVATE_METADATA|CHANGELOG
+MANAGER|NLH Mod Manager.vbs|NLH%20Mod%20Manager.vbs|0e72779ecf8113aabd4ec19037c827f12b7e6937|221076e0448a35d49a275d8675e0153b7216d97d28e7491a37fa9425c935007c|21888|||NLH Mod Manager||
+RELEASE|NLH Mod Manager Public Release V1.0.vbs|NLH%20Mod%20Manager%20Public%20Release%20V1.0.vbs|4f66878cfcc337cd000b2054ed9d8473d459c406|09a8c2f365de6c13c67426f04231954edb1a6a4e28bed188c05dfc582f880030|79348|1.0||NLH Mod Manager Public Release V1.0||
+RELEASE|NLH Mod Manager Public Release V1.1.vbs|NLH%20Mod%20Manager%20Public%20Release%20V1.1.vbs|3c334c5870251165ba0fdcdbc94a289d5d53cddc|01b721d6f1887ba538d205a93d94cf13c59d76be4e1cc92312e96138d5fc5139|83804|1.1||NLH Mod Manager Public Release V1.1|NLH Mod Manager Public Release V1.1_Private.txt|
+RELEASE_PRIVATE|NLH Mod Manager Public Release V1.1_Private.txt|NLH%20Mod%20Manager%20Public%20Release%20V1.1_Private.txt|d5683d16f56180f36bfb6383b0518a699d4a5f7e|1c345f041113a1e3754b11b84ca3a516a1d61584be7456b4c34544a78ffafa3f|72|1.1||NLH Mod Manager Public Release V1.1||
+SQUAD_PROFILES|NLH Mod Manager Squad Profiles.txt|NLH%20Mod%20Manager%20Squad%20Profiles.txt|86f11506bd2d96802ae5bcefb9f9b97b783f970b|ed1f05432ac74f89c89ce633ec27832c7969e81914bb437c72f226e038f2a687|412|||NLH Mod Manager Squad Profiles||
+ICON|NLH_MM.ico|NLH_MM.ico|97d4b0cb7e0374d8f9fda7fd73b7c8433a5d232c|753f46df39a2e00a277208eda4f8139fc7d2767b256273125afbd8dfd87949b8|115507|||NLH_MM||
+MOD|Anakin Skywalker (Anakeen Skyweeny)_1.0.zip|Anakin%20Skywalker%20%28Anakeen%20Skyweeny%29_1.0.zip|1640c5e4667edb1cff54b4d7bce4869aabd89bd0|53d2fd37d33b95b56b8dad230539363b292b14535325dfd3f99917cb4cc289c3|7469525|1.0|Anakin Skywalker (Anakeen Skyweeny)|Anakin Skywalker (Anakeen Skyweeny)_1.0||
+MOD|BB-9E (BWG-9D)_1.0.zip|BB-9E%20%28BWG-9D%29_1.0.zip|203e31b5a7e6182eb368aa1b6424bacefe453c6b|e1245fd91282ebc61a323aa974c5b873e70e22ea10614d6ec34ff4e1504900cb|4004632|1.0|BB-9E (BWG-9D)|BB-9E (BWG-9D)_1.0||
+MOD|Remove Spawn Menu Restrictions (NLH Edition)_1.0.zip|Remove%20Spawn%20Menu%20Restrictions%20%28NLH%20Edition%29_1.0.zip|66ac004a9a67b61f996522650f907a3b58754a14|28b3fc5774ee540e254dd1d6903d1dae391702ea9b9b29ae53f794a50e58bc5a|20688|1.0|Remove Spawn Menu Restrictions (NLH Edition)|Remove Spawn Menu Restrictions (NLH Edition)_1.0|Remove Spawn Menu Restrictions (NLH Edition)_1.0_Private.txt|
+MOD|Darth Maul (Darth Onwards)_1.2.zip|Darth%20Maul%20%28Darth%20Onwards%29_1.2.zip|502d174536c943c9904ec9bda5d42fb9c82c91b7|3fe899adbc9d7d4e68053201ceeae49ae4ba9796e1d1527e064310fc6a4a9b79|18146065|1.2|Darth Maul (Darth Onwards)|Darth Maul (Darth Onwards)_1.2||
+MOD|Han Solo (Levi Solo)_1.9.5.zip|Han%20Solo%20%28Levi%20Solo%29_1.9.5.zip|7b889fcf4c5de408c40f733bb6d5a539f00a2798|41ee68d2df47c82fa1bf64afd158489aa1f701a1729f6edf9814de87d86ae61b|20040221|1.9.5|Han Solo (Levi Solo)|Han Solo (Levi Solo)_1.9.5||
+PRIVATE|Remove Spawn Menu Restrictions (NLH Edition)_1.0_Private.txt|Remove%20Spawn%20Menu%20Restrictions%20%28NLH%20Edition%29_1.0_Private.txt|980106cbd9d8b133394ccf683c09e4b264a68504|51bee4ae56fcdc2e85b03ce4d99091910a35ca8c779d79df0847bfa57b29b560|72|||Remove Spawn Menu Restrictions (NLH Edition)_1.0||
