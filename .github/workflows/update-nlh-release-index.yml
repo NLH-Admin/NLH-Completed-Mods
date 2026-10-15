@@ -1,0 +1,124 @@
+name: Update NLH release index
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches:
+      - main
+    paths:
+      - "NLH Mod Manager Public Release V*.vbs"
+      - "NLH Mod Manager Public Release V*_Private.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  update-release-index:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate release index
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          release_pattern = re.compile(
+              r"^NLH Mod Manager Public Release V"
+              r"((?:[1-9]\d?)\.[0-9])"
+              r"\.vbs$",
+              re.IGNORECASE,
+          )
+
+          private_pattern = re.compile(
+              r"^NLH Mod Manager Public Release V"
+              r"((?:[1-9]\d?)\.[0-9])"
+              r"_Private\.txt$",
+              re.IGNORECASE,
+          )
+
+          entries = []
+
+          for path in Path(".").iterdir():
+              if not path.is_file():
+                  continue
+
+              release_match = release_pattern.fullmatch(path.name)
+              private_match = private_pattern.fullmatch(path.name)
+
+              if release_match:
+                  major, minor = map(
+                      int,
+                      release_match.group(1).split("."),
+                  )
+
+                  entries.append(
+                      (major, minor, 0, path.name)
+                  )
+
+              elif private_match:
+                  major, minor = map(
+                      int,
+                      private_match.group(1).split("."),
+                  )
+
+                  entries.append(
+                      (major, minor, 1, path.name)
+                  )
+
+          entries.sort(
+              key=lambda entry: (
+                  entry[0],
+                  entry[1],
+                  entry[2],
+                  entry[3].lower(),
+              )
+          )
+
+          output = "\n".join(
+              entry[3] for entry in entries
+          )
+
+          if output:
+              output += "\n"
+
+          Path(
+              "NLH Mod Manager Release Index.txt"
+          ).write_text(
+              output,
+              encoding="utf-8",
+              newline="\n",
+          )
+          PY
+
+      - name: Commit updated release index
+        shell: bash
+        run: |
+          if git diff --quiet -- \
+            "NLH Mod Manager Release Index.txt"; then
+            echo "Release index is already current."
+            exit 0
+          fi
+
+          git config \
+            user.name \
+            "github-actions[bot]"
+
+          git config \
+            user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add \
+            "NLH Mod Manager Release Index.txt"
+
+          git commit \
+            -m "Update NLH Mod Manager release index"
+
+          git push
