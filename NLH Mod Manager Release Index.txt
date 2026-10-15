@@ -1,8 +1,8 @@
 NLH-REPOSITORY-INDEX|1
 #TYPE|NAME|RAW_PATH|GIT_BLOB_SHA|SHA256|SIZE|VERSION|CHARACTER|BASE_NAME|PRIVATE_METADATA|CHANGELOG
-MANAGER|NLH Mod Manager.vbs|NLH%20Mod%20Manager.vbs|d114a67b592719aa1c82683e4f10d1a019b9bc4d|a52c53c3e06c6b8cd86b13b0e724314672383d9f9b61d706b6f47917bb964645|100591|||NLH Mod Manager||
-RELEASE|NLH Mod Manager Public Release V1.0.vbs|NLH%20Mod%20Manager%20Public%20Release%20V1.0.vbs|6bc451ef2a45a145ed15e49122835ddb73d0236f|f220d1cfe4cbb34a7605da711e4a289b1cb3c7744f95a756da5fe809c0edc4ee|77849|1.0||NLH Mod Manager Public Release V1.0||
-RELEASE|NLH Mod Manager Public Release V1.1.vbs|NLH%20Mod%20Manager%20Public%20Release%20V1.1.vbs|f64d67947405969ff0c162baa2aae86ef93c1573|20646a56cd28271bff177fbe3900f24697f852496978e1fe80f4f8756427896f|82349|1.1||NLH Mod Manager Public Release V1.1|NLH Mod Manager Public Release V1.1_Private.txt|
+MANAGER|NLH Mod Manager.vbs|NLH%20Mod%20Manager.vbs|658287f70a452d3ad65d58fab23904018c9a938e|42d64429b6cf0ae019ef3f6dec781e0891bf673bf6b722afe987b5c7a3ee37bc|21964|||NLH Mod Manager||
+RELEASE|NLH Mod Manager Public Release V1.0.vbs|NLH%20Mod%20Manager%20Public%20Release%20V1.0.vbs|a774e99a0b65f1acdaae06e1cc9f18b2434f1d2b|dcb7af2e206ae86eb2eb8f6525e50b53d60c6d6f850158cae80d43e0cf0a121e|77796|1.0||NLH Mod Manager Public Release V1.0||
+RELEASE|NLH Mod Manager Public Release V1.1.vbs|NLH%20Mod%20Manager%20Public%20Release%20V1.1.vbs|b50c4c62be1f87e91a10f1b63b45c21e37397554|6f35c628ca496385f8b8a14996afdd637db950005819d82ee55d4112edb620e7|82292|1.1||NLH Mod Manager Public Release V1.1|NLH Mod Manager Public Release V1.1_Private.txt|
 RELEASE_PRIVATE|NLH Mod Manager Public Release V1.1_Private.txt|NLH%20Mod%20Manager%20Public%20Release%20V1.1_Private.txt|d5683d16f56180f36bfb6383b0518a699d4a5f7e|1c345f041113a1e3754b11b84ca3a516a1d61584be7456b4c34544a78ffafa3f|72|1.1||NLH Mod Manager Public Release V1.1||
 SQUAD_PROFILES|NLH Mod Manager Squad Profiles.txt|NLH%20Mod%20Manager%20Squad%20Profiles.txt|86f11506bd2d96802ae5bcefb9f9b97b783f970b|ed1f05432ac74f89c89ce633ec27832c7969e81914bb437c72f226e038f2a687|412|||NLH Mod Manager Squad Profiles||
 ICON|NLH_MM.ico|NLH_MM.ico|97d4b0cb7e0374d8f9fda7fd73b7c8433a5d232c|753f46df39a2e00a277208eda4f8139fc7d2767b256273125afbd8dfd87949b8|115507|||NLH_MM||
