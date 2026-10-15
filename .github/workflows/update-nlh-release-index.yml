@@ -15,11 +15,11 @@ permissions:
 
 jobs:
   update-release-index:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -101,8 +101,8 @@ jobs:
       - name: Commit updated release index
         shell: bash
         run: |
-          if git diff --quiet -- \
-            "NLH Mod Manager Release Index.txt"; then
+          if [ -z "$(git status --porcelain -- \
+            'NLH Mod Manager Release Index.txt')" ]; then
             echo "Release index is already current."
             exit 0
           fi
