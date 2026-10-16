@@ -53,19 +53,21 @@ jobs:
               "CHARACTER|BASE_NAME|PRIVATE_METADATA|CHANGELOG"
           )
 
-          release_re = re.compile(
+          manager_name = "NLH Mod Manager.vbs"
+
+          release_pattern = re.compile(
               r"^NLH Mod Manager Public Release "
               r"V(?P<version>\d+(?:\.\d+)*)\.vbs$",
               re.IGNORECASE,
           )
 
-          release_private_re = re.compile(
+          release_private_pattern = re.compile(
               r"^NLH Mod Manager Public Release "
               r"V(?P<version>\d+(?:\.\d+)*)_Private\.txt$",
               re.IGNORECASE,
           )
 
-          mod_re = re.compile(
+          mod_pattern = re.compile(
               r"^(?P<character>.+)_"
               r"(?P<version>\d+(?:\.\d+)*)\.zip$",
               re.IGNORECASE,
@@ -77,6 +79,18 @@ jobs:
                   flush=True,
               )
               raise SystemExit(1)
+
+          def warning(message):
+              print(
+                  f"::warning title=NLH repository index::{message}",
+                  flush=True,
+              )
+
+          def notice(message):
+              print(
+                  f"::notice title=NLH repository index::{message}",
+                  flush=True,
+              )
 
           def sha256_file(path):
               digest = hashlib.sha256()
@@ -164,6 +178,25 @@ jobs:
                   for part in version.split(".")
               )
 
+          preserved_manager_row = None
+
+          if index_path.is_file():
+              existing_lines = index_path.read_text(
+                  encoding="utf-8-sig"
+              ).splitlines()
+
+              for existing_line in existing_lines[2:]:
+                  existing_fields = existing_line.split("|")
+
+                  if (
+                      len(existing_fields) == 11
+                      and existing_fields[0] == "MANAGER"
+                      and existing_fields[1].casefold()
+                      == manager_name.casefold()
+                  ):
+                      preserved_manager_row = existing_line
+                      break
+
           files = sorted(
               (
                   path
@@ -191,16 +224,9 @@ jobs:
 
               by_name[key] = path
 
-          manager_name = "NLH Mod Manager.vbs"
-
           manager = by_name.get(
               manager_name.casefold()
           )
-
-          if manager is None:
-              fail(
-                  f"Required launcher is missing: {manager_name}"
-              )
 
           releases = []
           release_private_files = []
@@ -210,10 +236,10 @@ jobs:
           icons = []
 
           for path in files:
-              if path == manager:
+              if manager is not None and path == manager:
                   continue
 
-              match = release_re.fullmatch(
+              match = release_pattern.fullmatch(
                   path.name
               )
 
@@ -226,7 +252,7 @@ jobs:
                   )
                   continue
 
-              match = release_private_re.fullmatch(
+              match = release_private_pattern.fullmatch(
                   path.name
               )
 
@@ -239,7 +265,7 @@ jobs:
                   )
                   continue
 
-              match = mod_re.fullmatch(
+              match = mod_pattern.fullmatch(
                   path.name
               )
 
@@ -313,13 +339,38 @@ jobs:
                       f"exactly: {required_name}"
                   )
 
-          rows = [
-              make_row(
-                  "MANAGER",
-                  manager,
-                  base_name=manager.stem,
+          rows = []
+
+          if manager is not None:
+              rows.append(
+                  make_row(
+                      "MANAGER",
+                      manager,
+                      base_name=manager.stem,
+                  )
               )
-          ]
+
+              notice(
+                  "The MANAGER row was regenerated from "
+                  "NLH Mod Manager.vbs."
+              )
+
+          elif preserved_manager_row is not None:
+              rows.append(
+                  preserved_manager_row
+              )
+
+              warning(
+                  "NLH Mod Manager.vbs is absent from the repository. "
+                  "The existing MANAGER row was preserved unchanged."
+              )
+
+          else:
+              warning(
+                  "NLH Mod Manager.vbs is absent and no existing "
+                  "MANAGER row could be preserved. The generated "
+                  "index will not contain a MANAGER row."
+              )
 
           for path, version in sorted(
               releases,
@@ -471,8 +522,6 @@ jobs:
               newline="\n",
           )
 
-          records = {}
-
           lines = index_path.read_text(
               encoding="utf-8"
           ).splitlines()
@@ -491,6 +540,8 @@ jobs:
               fail(
                   "Generated index header is invalid."
               )
+
+          records = {}
 
           for line_number, line in enumerate(
               lines[2:],
@@ -518,11 +569,26 @@ jobs:
                   changelog,
               ) = fields
 
-              path = by_name.get(
-                  name.casefold()
-              )
+              key = name.casefold()
+
+              if key in records:
+                  fail(
+                      "Duplicate NAME in generated index: "
+                      f"{name}"
+                  )
+
+              records[key] = fields
+
+              path = by_name.get(key)
 
               if path is None:
+                  if (
+                      item_type == "MANAGER"
+                      and key == manager_name.casefold()
+                      and preserved_manager_row is not None
+                  ):
+                      continue
+
                   fail(
                       f"Indexed file is unavailable: {name}"
                   )
@@ -554,30 +620,6 @@ jobs:
                   fail(
                       f"Size mismatch for {name}"
                   )
-
-              key = name.casefold()
-
-              if key in records:
-                  fail(
-                      "Duplicate NAME in generated "
-                      f"index: {name}"
-                  )
-
-              records[key] = fields
-
-          manager_record = records.get(
-              manager_name.casefold()
-          )
-
-          if manager_record is None:
-              fail(
-                  "The launcher MANAGER record is missing."
-              )
-
-          if manager_record[0] != "MANAGER":
-              fail(
-                  "The launcher has the wrong index TYPE."
-              )
 
           for version, required_name in (
               required_releases.items()
@@ -626,8 +668,8 @@ jobs:
               )
 
           print(
-              "Repository index verification "
-              "completed successfully."
+              "Repository index generation and "
+              "verification completed successfully."
           )
           PY
 
