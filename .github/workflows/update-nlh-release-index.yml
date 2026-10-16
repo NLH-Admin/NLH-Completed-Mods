@@ -53,19 +53,23 @@ jobs:
               "CHARACTER|BASE_NAME|PRIVATE_METADATA|CHANGELOG"
           )
 
-          release_re = re.compile(
+          manager_name = "NLH Mod Manager.vbs"
+          squad_profiles_name = "NLH Mod Manager Squad Profiles.txt"
+          icon_name = "NLH_MM.ico"
+
+          release_pattern = re.compile(
               r"^NLH Mod Manager Public Release "
               r"V(?P<version>\d+(?:\.\d+)*)\.vbs$",
               re.IGNORECASE,
           )
 
-          release_private_re = re.compile(
+          release_private_pattern = re.compile(
               r"^NLH Mod Manager Public Release "
               r"V(?P<version>\d+(?:\.\d+)*)_Private\.txt$",
               re.IGNORECASE,
           )
 
-          mod_re = re.compile(
+          mod_pattern = re.compile(
               r"^(?P<character>.+)_"
               r"(?P<version>\d+(?:\.\d+)*)\.zip$",
               re.IGNORECASE,
@@ -77,6 +81,12 @@ jobs:
                   flush=True,
               )
               raise SystemExit(1)
+
+          def notice(message):
+              print(
+                  f"::notice title=NLH release index::{message}",
+                  flush=True,
+              )
 
           def sha256_file(path):
               digest = hashlib.sha256()
@@ -130,6 +140,12 @@ jobs:
                   .replace("\n", "")
               )
 
+          def version_key(version):
+              return tuple(
+                  int(part)
+                  for part in version.split(".")
+              )
+
           def make_row(
               item_type,
               path,
@@ -158,12 +174,6 @@ jobs:
                   for field in fields
               )
 
-          def version_key(version):
-              return tuple(
-                  int(part)
-                  for part in version.split(".")
-              )
-
           files = sorted(
               (
                   path
@@ -176,32 +186,30 @@ jobs:
 
           if not files:
               fail(
-                  "No files were found in the repository root"
+                  "No files were found in the repository root."
               )
 
-          by_name = {}
+          files_by_name = {}
 
           for path in files:
               key = path.name.casefold()
 
-              if key in by_name:
+              if key in files_by_name:
                   fail(
                       f"Duplicate root filename: {path.name}"
                   )
 
-              by_name[key] = path
+              files_by_name[key] = path
 
-          manager_name = "NLH Mod Manager.vbs"
-
-          manager = by_name.get(
+          manager = files_by_name.get(
               manager_name.casefold()
           )
 
           releases = []
           release_private_files = []
-          squad_profiles = []
-          icons = []
-          mods = []
+          squad_profile_files = []
+          icon_files = []
+          mod_files = []
           private_files = []
 
           for path in files:
@@ -211,56 +219,60 @@ jobs:
               ):
                   continue
 
-              match = release_re.fullmatch(
-                  path.name
+              release_match = (
+                  release_pattern.fullmatch(path.name)
               )
 
-              if match:
+              if release_match:
                   releases.append(
                       (
                           path,
-                          match.group("version"),
+                          release_match.group("version"),
                       )
                   )
                   continue
 
-              match = release_private_re.fullmatch(
-                  path.name
+              release_private_match = (
+                  release_private_pattern.fullmatch(
+                      path.name
+                  )
               )
 
-              if match:
+              if release_private_match:
                   release_private_files.append(
                       (
                           path,
-                          match.group("version"),
+                          release_private_match.group(
+                              "version"
+                          ),
                       )
                   )
                   continue
 
               if (
                   path.name.casefold()
-                  == "nlh mod manager squad profiles.txt"
+                  == squad_profiles_name.casefold()
               ):
-                  squad_profiles.append(path)
+                  squad_profile_files.append(path)
                   continue
 
               if (
                   path.name.casefold()
-                  == "nlh_mm.ico"
+                  == icon_name.casefold()
               ):
-                  icons.append(path)
+                  icon_files.append(path)
                   continue
 
-              match = mod_re.fullmatch(
+              mod_match = mod_pattern.fullmatch(
                   path.name
               )
 
-              if match:
-                  mods.append(
+              if mod_match:
+                  mod_files.append(
                       (
                           path,
-                          match.group("version"),
-                          match.group("character"),
+                          mod_match.group("version"),
+                          mod_match.group("character"),
                       )
                   )
                   continue
@@ -270,16 +282,16 @@ jobs:
               ):
                   private_files.append(path)
 
-          release_by_version = {}
+          releases_by_version = {}
 
           for path, version in releases:
-              if version in release_by_version:
+              if version in releases_by_version:
                   fail(
                       "Duplicate public manager release "
-                      f"V{version}"
+                      f"V{version}."
                   )
 
-              release_by_version[version] = path
+              releases_by_version[version] = path
 
           required_releases = {
               "1.0": (
@@ -295,7 +307,7 @@ jobs:
           for version, required_name in (
               required_releases.items()
           ):
-              path = release_by_version.get(
+              path = releases_by_version.get(
                   version
               )
 
@@ -307,8 +319,8 @@ jobs:
 
               if path.name != required_name:
                   fail(
-                      f"Release V{version} must be "
-                      f"named exactly: {required_name}"
+                      f"Release V{version} must use "
+                      f"the exact filename {required_name}."
                   )
 
           rows = []
@@ -320,6 +332,17 @@ jobs:
                       manager,
                       base_name=manager.stem,
                   )
+              )
+
+              notice(
+                  "Included the current launcher in "
+                  "the generated release index."
+              )
+          else:
+              notice(
+                  "The current baseline predates remote "
+                  "launcher updating, so no MANAGER row "
+                  "was generated."
               )
 
           for path, version in sorted(
@@ -334,7 +357,8 @@ jobs:
 
               private_metadata = (
                   private_name
-                  if private_name.casefold() in by_name
+                  if private_name.casefold()
+                  in files_by_name
                   else ""
               )
 
@@ -364,7 +388,7 @@ jobs:
               )
 
           for path in sorted(
-              squad_profiles,
+              squad_profile_files,
               key=lambda item: item.name.casefold(),
           ):
               rows.append(
@@ -376,7 +400,7 @@ jobs:
               )
 
           for path in sorted(
-              icons,
+              icon_files,
               key=lambda item: item.name.casefold(),
           ):
               rows.append(
@@ -388,7 +412,7 @@ jobs:
               )
 
           for path, version, character in sorted(
-              mods,
+              mod_files,
               key=lambda item: (
                   item[2].casefold(),
                   version_key(item[1]),
@@ -407,13 +431,15 @@ jobs:
 
               private_metadata = (
                   private_name
-                  if private_name.casefold() in by_name
+                  if private_name.casefold()
+                  in files_by_name
                   else ""
               )
 
               changelog = (
                   changelog_name
-                  if changelog_name.casefold() in by_name
+                  if changelog_name.casefold()
+                  in files_by_name
                   else ""
               )
 
@@ -478,22 +504,23 @@ jobs:
 
           if len(lines) < 2:
               fail(
-                  "Generated release index is incomplete"
+                  "The generated release index is incomplete."
               )
 
           if lines[0] != signature:
               fail(
-                  "Generated release index signature "
-                  "is invalid"
+                  "The generated release index has "
+                  "an invalid signature."
               )
 
           if lines[1] != header:
               fail(
-                  "Generated release index header "
-                  "is invalid"
+                  "The generated release index has "
+                  "an invalid header."
               )
 
           records = {}
+          raw_paths = set()
 
           for line_number, line in enumerate(
               lines[2:],
@@ -504,15 +531,15 @@ jobs:
               if len(fields) != 11:
                   fail(
                       f"Index line {line_number} has "
-                      f"{len(fields)} fields instead of 11"
+                      f"{len(fields)} fields instead of 11."
                   )
 
               (
                   item_type,
                   name,
-                  stored_raw,
-                  stored_blob,
-                  stored_hash,
+                  stored_raw_path,
+                  stored_blob_sha,
+                  stored_sha256,
                   stored_size,
                   version,
                   character,
@@ -521,52 +548,81 @@ jobs:
                   changelog,
               ) = fields
 
-              path = by_name.get(
+              file_path = files_by_name.get(
                   name.casefold()
               )
 
-              if path is None:
+              if file_path is None:
                   fail(
                       f"Indexed file is unavailable: {name}"
                   )
 
-              if stored_raw != raw_path(path):
+              expected_raw_path = raw_path(
+                  file_path
+              )
+
+              if (
+                  stored_raw_path
+                  != expected_raw_path
+              ):
                   fail(
-                      f"RAW_PATH mismatch for {name}"
+                      f"RAW_PATH mismatch for {name}. "
+                      f"Stored: {stored_raw_path}. "
+                      f"Expected: {expected_raw_path}."
                   )
 
-              expected_blob = git_blob_sha(path)
+              expected_blob_sha = git_blob_sha(
+                  file_path
+              )
 
-              if stored_blob != expected_blob:
+              if (
+                  stored_blob_sha
+                  != expected_blob_sha
+              ):
                   fail(
-                      f"Git blob SHA mismatch for {name}"
+                      f"Git blob SHA mismatch for {name}."
                   )
 
-              expected_hash = sha256_file(path)
+              expected_sha256 = sha256_file(
+                  file_path
+              )
 
-              if stored_hash != expected_hash:
+              if (
+                  stored_sha256
+                  != expected_sha256
+              ):
                   fail(
-                      f"SHA-256 mismatch for {name}"
+                      f"SHA-256 mismatch for {name}."
                   )
 
               expected_size = str(
-                  path.stat().st_size
+                  file_path.stat().st_size
               )
 
               if stored_size != expected_size:
                   fail(
-                      f"Size mismatch for {name}"
+                      f"Size mismatch for {name}. "
+                      f"Stored: {stored_size}. "
+                      f"Expected: {expected_size}."
                   )
 
-              key = name.casefold()
+              name_key = name.casefold()
+              raw_key = stored_raw_path.casefold()
 
-              if key in records:
+              if name_key in records:
                   fail(
                       "Duplicate NAME in generated "
                       f"index: {name}"
                   )
 
-              records[key] = fields
+              if raw_key in raw_paths:
+                  fail(
+                      "Duplicate RAW_PATH in generated "
+                      f"index: {stored_raw_path}"
+                  )
+
+              records[name_key] = fields
+              raw_paths.add(raw_key)
 
           for version, required_name in (
               required_releases.items()
@@ -578,7 +634,7 @@ jobs:
               if record is None:
                   fail(
                       "Required release is absent from "
-                      f"generated index: {required_name}"
+                      f"the generated index: {required_name}"
                   )
 
               if record[0] != "RELEASE":
@@ -593,9 +649,57 @@ jobs:
                       f"{required_name}: {record[6]}"
                   )
 
+          v11_name = required_releases["1.1"]
+
+          v11_private_name = (
+              "NLH Mod Manager Public Release "
+              "V1.1_Private.txt"
+          )
+
+          v11_record = records[
+              v11_name.casefold()
+          ]
+
+          v11_private_record = records.get(
+              v11_private_name.casefold()
+          )
+
+          if v11_private_record is not None:
+              if (
+                  v11_record[9]
+                  != v11_private_name
+              ):
+                  fail(
+                      "The V1.1 RELEASE row does not "
+                      "reference its private metadata file."
+                  )
+
+              if (
+                  v11_private_record[0]
+                  != "RELEASE_PRIVATE"
+              ):
+                  fail(
+                      "The V1.1 private metadata row "
+                      "has the wrong TYPE."
+                  )
+
+              if (
+                  v11_private_record[6]
+                  != "1.1"
+              ):
+                  fail(
+                      "The V1.1 private metadata row "
+                      "has the wrong VERSION."
+                  )
+
+          elif v11_recordfail(
+                  "The V1.1 RELEASE row references "
+                  "private metadata that is not indexed."
+              )
+
           print(
               f"Generated {index_name} "
-              f"with {len(rows)} records"
+              f"with {len(rows)} records."
           )
 
           for version in ("1.0", "1.1"):
@@ -616,7 +720,7 @@ jobs:
 
           print(
               "Release index verification "
-              "completed successfully"
+              "completed successfully."
           )
           PY
 
@@ -627,16 +731,22 @@ jobs:
         run: |
           set -euo pipefail
 
+          echo "Generated release index:"
+          echo
+
           cat -- "$INDEX_FILE"
 
-      - name: Commit updated release index
+      - name: Commit and push updated release index
         shell: bash
         env:
           INDEX_FILE: NLH Mod Manager Release Index.txt
         run: |
           set -euo pipefail
 
-          if git diff --quiet -- "$INDEX_FILE"; then
+          echo "Git status before staging:"
+          git status --short
+
+          if [ -z "$(git status --porcelain -- "$INDEX_FILE")" ]; then
             echo "Release index is already current."
             exit 0
           fi
@@ -651,9 +761,32 @@ jobs:
 
           git add -- "$INDEX_FILE"
 
+          echo "Staged release-index change:"
+          git diff --cached --stat
+
+          if git diff --cached --quiet; then
+            echo "No staged release-index change was found."
+            exit 0
+          fi
+
           git commit \
             -m "Update NLH Mod Manager release index"
+
+          if git push origin HEAD:main; then
+            echo "Release index pushed successfully."
+            exit 0
+          fi
+
+          echo "Initial push was rejected."
+          echo "Rebasing the generated commit onto the latest main branch."
+
+          git pull \
+            --rebase \
+            origin \
+            main
 
           git push \
             origin \
             HEAD:main
+
+          echo "Release index pushed successfully after rebasing."
