@@ -1,11 +1,13 @@
-name: Rebuild NLH Mod Manager Release Index
+name: Update NLH Mod Manager Release Index
 
 on:
   push:
     branches:
       - main
-    paths-ignore:
-      - "NLH Mod Manager Release Index.txt"
+    paths:
+      - "NLH Mod Manager Public Release V*.vbs"
+      - "NLH Mod Manager Public Release V*_Private.txt"
+      - ".github/workflows/update-nlh-manager-release-index.yml"
   workflow_dispatch:
 
 permissions:
@@ -16,8 +18,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  rebuild-index:
-    name: Rebuild NLH Mod Manager release index
+  update-release-index:
+    name: Update NLH Mod Manager release index
     runs-on: ubuntu-24.04
 
     steps:
@@ -27,7 +29,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Generate and verify release index
+      - name: Update and verify manager release records
         shell: bash
         env:
           INDEX_FILE: NLH Mod Manager Release Index.txt
@@ -53,27 +55,22 @@ jobs:
               "CHARACTER|BASE_NAME|PRIVATE_METADATA|CHANGELOG"
           )
 
-          manager_name = "NLH Mod Manager.vbs"
-          squad_profiles_name = "NLH Mod Manager Squad Profiles.txt"
-          icon_name = "NLH_MM.ico"
-
           release_pattern = re.compile(
               r"^NLH Mod Manager Public Release "
               r"V(?P<version>\d+(?:\.\d+)*)\.vbs$",
               re.IGNORECASE,
           )
 
-          release_private_pattern = re.compile(
+          private_pattern = re.compile(
               r"^NLH Mod Manager Public Release "
               r"V(?P<version>\d+(?:\.\d+)*)_Private\.txt$",
               re.IGNORECASE,
           )
 
-          mod_pattern = re.compile(
-              r"^(?P<character>.+)_"
-              r"(?P<version>\d+(?:\.\d+)*)\.zip$",
-              re.IGNORECASE,
-          )
+          required_releases = {
+              "1.0": "NLH Mod Manager Public Release V1.0.vbs",
+              "1.1": "NLH Mod Manager Public Release V1.1.vbs",
+          }
 
           def fail(message):
               print(
@@ -132,7 +129,7 @@ jobs:
                   safe="",
               )
 
-          def clean(value):
+          def clean_field(value):
               return (
                   str(value)
                   .replace("|", "")
@@ -140,398 +137,302 @@ jobs:
                   .replace("\n", "")
               )
 
-          def version_key(version):
-              return tuple(
-                  int(part)
-                  for part in version.split(".")
-              )
+          def release_row(path, version):
+              base_name = path.stem
+              private_name = f"{base_name}_Private.txt"
+              private_path = root / private_name
 
-          def make_row(
-              item_type,
-              path,
-              version="",
-              character="",
-              base_name="",
-              private_metadata="",
-              changelog="",
-          ):
               fields = [
-                  item_type,
+                  "RELEASE",
                   path.name,
                   raw_path(path),
                   git_blob_sha(path),
                   sha256_file(path),
                   str(path.stat().st_size),
                   version,
-                  character,
+                  "",
                   base_name,
-                  private_metadata,
-                  changelog,
+                  private_name if private_path.is_file() else "",
+                  "",
               ]
 
               return "|".join(
-                  clean(field)
+                  clean_field(field)
                   for field in fields
               )
 
-          files = sorted(
-              (
-                  path
-                  for path in root.iterdir()
-                  if path.is_file()
-                  and path.name != index_name
-              ),
-              key=lambda path: path.name.casefold(),
-          )
+          def private_row(path, version):
+              base_name = path.name[
+                  : -len("_Private.txt")
+              ]
 
-          if not files:
+              fields = [
+                  "RELEASE_PRIVATE",
+                  path.name,
+                  raw_path(path),
+                  git_blob_sha(path),
+                  sha256_file(path),
+                  str(path.stat().st_size),
+                  version,
+                  "",
+                  base_name,
+                  "",
+                  "",
+              ]
+
+              return "|".join(
+                  clean_field(field)
+                  for field in fields
+              )
+
+          if not index_path.is_file():
               fail(
-                  "No files were found in the repository root."
+                  f"Required index file is missing: {index_name}"
               )
 
-          files_by_name = {}
+          original_lines = index_path.read_text(
+              encoding="utf-8-sig"
+          ).splitlines()
 
-          for path in files:
-              key = path.name.casefold()
-
-              if key in files_by_name:
-                  fail(
-                      f"Duplicate root filename: {path.name}"
-                  )
-
-              files_by_name[key] = path
-
-          manager = files_by_name.get(
-              manager_name.casefold()
-          )
-
-          releases = []
-          release_private_files = []
-          squad_profile_files = []
-          icon_files = []
-          mod_files = []
-          private_files = []
-
-          for path in files:
-              if (
-                  manager is not None
-                  and path == manager
-              ):
-                  continue
-
-              release_match = (
-                  release_pattern.fullmatch(path.name)
+          if len(original_lines) < 2:
+              fail(
+                  "The existing release index is incomplete."
               )
 
-              if release_match:
-                  releases.append(
-                      (
-                          path,
-                          release_match.group("version"),
-                      )
-                  )
-                  continue
-
-              release_private_match = (
-                  release_private_pattern.fullmatch(
-                      path.name
-                  )
+          if original_lines[0] != signature:
+              fail(
+                  "The existing release index has "
+                  "an invalid signature."
               )
 
-              if release_private_match:
-                  release_private_files.append(
-                      (
-                          path,
-                          release_private_match.group(
-                              "version"
-                          ),
-                      )
-                  )
+          if original_lines[1] != header:
+              fail(
+                  "The existing release index has "
+                  "an invalid header."
+              )
+
+          current_release_files = {}
+          current_private_files = {}
+
+          for path in root.iterdir():
+              if not path.is_file():
                   continue
 
-              if (
-                  path.name.casefold()
-                  == squad_profiles_name.casefold()
-              ):
-                  squad_profile_files.append(path)
-                  continue
-
-              if (
-                  path.name.casefold()
-                  == icon_name.casefold()
-              ):
-                  icon_files.append(path)
-                  continue
-
-              mod_match = mod_pattern.fullmatch(
+              release_match = release_pattern.fullmatch(
                   path.name
               )
 
-              if mod_match:
-                  mod_files.append(
-                      (
-                          path,
-                          mod_match.group("version"),
-                          mod_match.group("character"),
-                      )
+              if release_match:
+                  version = release_match.group(
+                      "version"
                   )
+
+                  if version in current_release_files:
+                      fail(
+                          "Duplicate manager release "
+                          f"version V{version}."
+                      )
+
+                  current_release_files[version] = path
                   continue
 
-              if path.name.casefold().endswith(
-                  "_private.txt"
-              ):
-                  private_files.append(path)
+              private_match = private_pattern.fullmatch(
+                  path.name
+              )
 
-          releases_by_version = {}
-
-          for path, version in releases:
-              if version in releases_by_version:
-                  fail(
-                      "Duplicate public manager release "
-                      f"V{version}."
+              if private_match:
+                  version = private_match.group(
+                      "version"
                   )
 
-              releases_by_version[version] = path
+                  if version in current_private_files:
+                      fail(
+                          "Duplicate manager private metadata "
+                          f"version V{version}."
+                      )
 
-          required_releases = {
-              "1.0": (
-                  "NLH Mod Manager Public Release "
-                  "V1.0.vbs"
-              ),
-              "1.1": (
-                  "NLH Mod Manager Public Release "
-                  "V1.1.vbs"
-              ),
-          }
+                  current_private_files[version] = path
 
           for version, required_name in (
               required_releases.items()
           ):
-              path = releases_by_version.get(
+              release_path = current_release_files.get(
                   version
               )
 
-              if path is None:
+              if release_path is None:
                   fail(
-                      "Required release is missing: "
-                      f"{required_name}"
+                      f"Required release is missing: {required_name}"
                   )
 
-              if path.name != required_name:
+              if release_path.name != required_name:
                   fail(
-                      f"Release V{version} must use "
-                      f"the exact filename {required_name}."
+                      f"Release V{version} must use the "
+                      f"exact filename {required_name}."
                   )
 
-          rows = []
-
-          if manager is not None:
-              rows.append(
-                  make_row(
-                      "MANAGER",
-                      manager,
-                      base_name=manager.stem,
-                  )
-              )
-
-              notice(
-                  "Included the current launcher in "
-                  "the generated release index."
-              )
-          else:
-              notice(
-                  "The current baseline predates remote "
-                  "launcher updating, so no MANAGER row "
-                  "was generated."
-              )
-
-          for path, version in sorted(
-              releases,
-              key=lambda item: version_key(item[1]),
-          ):
-              base_name = path.stem
-
-              private_name = (
-                  f"{base_name}_Private.txt"
-              )
-
-              private_metadata = (
-                  private_name
-                  if private_name.casefold()
-                  in files_by_name
-                  else ""
-              )
-
-              rows.append(
-                  make_row(
-                      "RELEASE",
-                      path,
-                      version=version,
-                      base_name=base_name,
-                      private_metadata=private_metadata,
-                  )
-              )
-
-          for path, version in sorted(
-              release_private_files,
-              key=lambda item: version_key(item[1]),
-          ):
-              rows.append(
-                  make_row(
-                      "RELEASE_PRIVATE",
-                      path,
-                      version=version,
-                      base_name=path.name[
-                          : -len("_Private.txt")
-                      ],
-                  )
-              )
-
-          for path in sorted(
-              squad_profile_files,
-              key=lambda item: item.name.casefold(),
-          ):
-              rows.append(
-                  make_row(
-                      "SQUAD_PROFILES",
-                      path,
-                      base_name=path.stem,
-                  )
-              )
-
-          for path in sorted(
-              icon_files,
-              key=lambda item: item.name.casefold(),
-          ):
-              rows.append(
-                  make_row(
-                      "ICON",
-                      path,
-                      base_name=path.stem,
-                  )
-              )
-
-          for path, version, character in sorted(
-              mod_files,
-              key=lambda item: (
-                  item[2].casefold(),
-                  version_key(item[1]),
-                  item[0].name.casefold(),
-              ),
-          ):
-              base_name = path.stem
-
-              private_name = (
-                  f"{base_name}_Private.txt"
-              )
-
-              changelog_name = (
-                  f"{base_name}_Changelog.txt"
-              )
-
-              private_metadata = (
-                  private_name
-                  if private_name.casefold()
-                  in files_by_name
-                  else ""
-              )
-
-              changelog = (
-                  changelog_name
-                  if changelog_name.casefold()
-                  in files_by_name
-                  else ""
-              )
-
-              rows.append(
-                  make_row(
-                      "MOD",
-                      path,
-                      version=version,
-                      character=character,
-                      base_name=base_name,
-                      private_metadata=private_metadata,
-                      changelog=changelog,
-                  )
-              )
-
-          release_private_names = {
-              path.name.casefold()
-              for path, unused_version
-              in release_private_files
+          replacement_release_rows = {
+              version: release_row(path, version)
+              for version, path
+              in current_release_files.items()
           }
 
-          for path in sorted(
-              private_files,
-              key=lambda item: item.name.casefold(),
-          ):
-              if (
-                  path.name.casefold()
-                  in release_private_names
-              ):
-                  continue
+          replacement_private_rows = {
+              version: private_row(path, version)
+              for version, path
+              in current_private_files.items()
+          }
 
-              rows.append(
-                  make_row(
-                      "PRIVATE",
-                      path,
-                      base_name=path.name[
-                          : -len("_Private.txt")
-                      ],
-                  )
-              )
+          output_lines = [
+              signature,
+              header,
+          ]
 
-          index_text = (
-              "\n".join(
-                  [
-                      signature,
-                      header,
-                      *rows,
-                  ]
-              )
-              + "\n"
-          )
-
-          index_path.write_text(
-              index_text,
-              encoding="utf-8",
-              newline="\n",
-          )
-
-          lines = index_path.read_text(
-              encoding="utf-8"
-          ).splitlines()
-
-          if len(lines) < 2:
-              fail(
-                  "The generated release index is incomplete."
-              )
-
-          if lines[0] != signature:
-              fail(
-                  "The generated release index has "
-                  "an invalid signature."
-              )
-
-          if lines[1] != header:
-              fail(
-                  "The generated release index has "
-                  "an invalid header."
-              )
-
-          records = {}
-          raw_paths = set()
+          written_release_versions = set()
+          written_private_versions = set()
 
           for line_number, line in enumerate(
-              lines[2:],
+              original_lines[2:],
               start=3,
           ):
               fields = line.split("|")
 
               if len(fields) != 11:
                   fail(
-                      f"Index line {line_number} has "
-                      f"{len(fields)} fields instead of 11."
+                      f"Existing index line {line_number} "
+                      f"has {len(fields)} fields instead of 11."
+                  )
+
+              item_type = fields[0]
+              name = fields[1]
+              version = fields[6]
+
+              if item_type == "RELEASE":
+                  match = release_pattern.fullmatch(
+                      name
+                  )
+
+                  if match:
+                      detected_version = match.group(
+                          "version"
+                      )
+
+                      replacement = (
+                          replacement_release_rows.get(
+                              detected_version
+                          )
+                      )
+
+                      if replacement is not None:
+                          output_lines.append(
+                              replacement
+                          )
+
+                          written_release_versions.add(
+                              detected_version
+                          )
+
+                      continue
+
+              if item_type == "RELEASE_PRIVATE":
+                  match = private_pattern.fullmatch(
+                      name
+                  )
+
+                  if match:
+                      detected_version = match.group(
+                          "version"
+                      )
+
+                      replacement = (
+                          replacement_private_rows.get(
+                              detected_version
+                          )
+                      )
+
+                      if replacement is not None:
+                          output_lines.append(
+                              replacement
+                          )
+
+                          written_private_versions.add(
+                              detected_version
+                          )
+
+                      continue
+
+              output_lines.append(line)
+
+          missing_release_versions = sorted(
+              set(replacement_release_rows)
+              - written_release_versions,
+              key=lambda value: tuple(
+                  int(part)
+                  for part in value.split(".")
+              ),
+          )
+
+          for version in missing_release_versions:
+              output_lines.append(
+                  replacement_release_rows[version]
+              )
+
+              written_release_versions.add(version)
+
+          missing_private_versions = sorted(
+              set(replacement_private_rows)
+              - written_private_versions,
+              key=lambda value: tuple(
+                  int(part)
+                  for part in value.split(".")
+              ),
+          )
+
+          for version in missing_private_versions:
+              output_lines.append(
+                  replacement_private_rows[version]
+              )
+
+              written_private_versions.add(version)
+
+          updated_text = (
+              "\n".join(output_lines)
+              + "\n"
+          )
+
+          index_path.write_text(
+              updated_text,
+              encoding="utf-8",
+              newline="\n",
+          )
+
+          verified_release_versions = set()
+          verified_private_versions = set()
+
+          final_lines = index_path.read_text(
+              encoding="utf-8"
+          ).splitlines()
+
+          if final_lines[0] != signature:
+              fail(
+                  "The updated index signature is invalid."
+              )
+
+          if final_lines[1] != header:
+              fail(
+                  "The updated index header is invalid."
+              )
+
+          for line_number, line in enumerate(
+              final_lines[2:],
+              start=3,
+          ):
+              fields = line.split("|")
+
+              if len(fields) != 11:
+                  fail(
+                      f"Updated index line {line_number} "
+                      f"has {len(fields)} fields instead of 11."
                   )
 
               (
@@ -548,190 +449,193 @@ jobs:
                   changelog,
               ) = fields
 
-              file_path = files_by_name.get(
-                  name.casefold()
-              )
-
-              if file_path is None:
-                  fail(
-                      f"Indexed file is unavailable: {name}"
+              if item_type == "RELEASE":
+                  match = release_pattern.fullmatch(
+                      name
                   )
 
-              expected_raw_path = raw_path(
-                  file_path
-              )
+                  if not match:
+                      continue
 
+                  detected_version = match.group(
+                      "version"
+                  )
+
+                  path = current_release_files.get(
+                      detected_version
+                  )
+
+                  if path is None:
+                      fail(
+                          "The updated index contains a "
+                          "release that is not present: "
+                          f"{name}"
+                      )
+
+                  if version != detected_version:
+                      fail(
+                          f"VERSION mismatch for {name}."
+                      )
+
+                  if stored_raw_path != raw_path(path):
+                      fail(
+                          f"RAW_PATH mismatch for {name}."
+                      )
+
+                  if stored_blob_sha != git_blob_sha(path):
+                      fail(
+                          f"Git blob SHA mismatch for {name}."
+                      )
+
+                  if stored_sha256 != sha256_file(path):
+                      fail(
+                          f"SHA-256 mismatch for {name}."
+                      )
+
+                  if stored_size != str(
+                      path.stat().st_size
+                  ):
+                      fail(
+                          f"Size mismatch for {name}."
+                      )
+
+                  expected_private_name = (
+                      f"{path.stem}_Private.txt"
+                  )
+
+                  expected_private_value = (
+                      expected_private_name
+                      if (
+                          root
+                          / expected_private_name
+                      ).is_file()
+                      else ""
+                  )
+
+                  if (
+                      private_metadata
+                      != expected_private_value
+                  ):
+                      fail(
+                          "PRIVATE_METADATA mismatch for "
+                          f"{name}."
+                      )
+
+                  verified_release_versions.add(
+                      detected_version
+                  )
+
+              elif item_type == "RELEASE_PRIVATE":
+                  match = private_pattern.fullmatch(
+                      name
+                  )
+
+                  if not match:
+                      continue
+
+                  detected_version = match.group(
+                      "version"
+                  )
+
+                  path = current_private_files.get(
+                      detected_version
+                  )
+
+                  if path is None:
+                      fail(
+                          "The updated index contains private "
+                          "metadata that is not present: "
+                          f"{name}"
+                      )
+
+                  if version != detected_version:
+                      fail(
+                          f"VERSION mismatch for {name}."
+                      )
+
+                  if stored_raw_path != raw_path(path):
+                      fail(
+                          f"RAW_PATH mismatch for {name}."
+                      )
+
+                  if stored_blob_sha != git_blob_sha(path):
+                      fail(
+                          f"Git blob SHA mismatch for {name}."
+                      )
+
+                  if stored_sha256 != sha256_file(path):
+                      fail(
+                          f"SHA-256 mismatch for {name}."
+                      )
+
+                  if stored_size != str(
+                      path.stat().st_size
+                  ):
+                      fail(
+                          f"Size mismatch for {name}."
+                      )
+
+                  verified_private_versions.add(
+                      detected_version
+                  )
+
+          for version in required_releases:
               if (
-                  stored_raw_path
-                  != expected_raw_path
+                  version
+                  not in verified_release_versions
               ):
                   fail(
-                      f"RAW_PATH mismatch for {name}. "
-                      f"Stored: {stored_raw_path}. "
-                      f"Expected: {expected_raw_path}."
+                      "The updated index does not contain "
+                      f"a verified V{version} RELEASE row."
                   )
 
-              expected_blob_sha = git_blob_sha(
-                  file_path
-              )
-
+          for version in current_private_files:
               if (
-                  stored_blob_sha
-                  != expected_blob_sha
+                  version
+                  not in verified_private_versions
               ):
                   fail(
-                      f"Git blob SHA mismatch for {name}."
+                      "The updated index does not contain "
+                      f"a verified V{version} "
+                      "RELEASE_PRIVATE row."
                   )
-
-              expected_sha256 = sha256_file(
-                  file_path
-              )
-
-              if (
-                  stored_sha256
-                  != expected_sha256
-              ):
-                  fail(
-                      f"SHA-256 mismatch for {name}."
-                  )
-
-              expected_size = str(
-                  file_path.stat().st_size
-              )
-
-              if stored_size != expected_size:
-                  fail(
-                      f"Size mismatch for {name}. "
-                      f"Stored: {stored_size}. "
-                      f"Expected: {expected_size}."
-                  )
-
-              name_key = name.casefold()
-              raw_key = stored_raw_path.casefold()
-
-              if name_key in records:
-                  fail(
-                      "Duplicate NAME in generated "
-                      f"index: {name}"
-                  )
-
-              if raw_key in raw_paths:
-                  fail(
-                      "Duplicate RAW_PATH in generated "
-                      f"index: {stored_raw_path}"
-                  )
-
-              records[name_key] = fields
-              raw_paths.add(raw_key)
-
-          for version, required_name in (
-              required_releases.items()
-          ):
-              record = records.get(
-                  required_name.casefold()
-              )
-
-              if record is None:
-                  fail(
-                      "Required release is absent from "
-                      f"the generated index: {required_name}"
-                  )
-
-              if record[0] != "RELEASE":
-                  fail(
-                      f"Incorrect TYPE for {required_name}: "
-                      f"{record[0]}"
-                  )
-
-              if record[6] != version:
-                  fail(
-                      f"Incorrect VERSION for "
-                      f"{required_name}: {record[6]}"
-                  )
-
-          v11_name = required_releases["1.1"]
-
-          v11_private_name = (
-              "NLH Mod Manager Public Release "
-              "V1.1_Private.txt"
-          )
-
-          v11_record = records[
-              v11_name.casefold()
-          ]
-
-          v11_private_record = records.get(
-              v11_private_name.casefold()
-          )
-
-          if v11_private_record is not None:
-              if (
-                  v11_record[9]
-                  != v11_private_name
-              ):
-                  fail(
-                      "The V1.1 RELEASE row does not "
-                      "reference its private metadata file."
-                  )
-
-              if (
-                  v11_private_record[0]
-                  != "RELEASE_PRIVATE"
-              ):
-                  fail(
-                      "The V1.1 private metadata row "
-                      "has the wrong TYPE."
-                  )
-
-              if (
-                  v11_private_record[6]
-                  != "1.1"
-              ):
-                  fail(
-                      "The V1.1 private metadata row "
-                      "has the wrong VERSION."
-                  )
-
-          elif v11_recordfail(
-                  "The V1.1 RELEASE row references "
-                  "private metadata that is not indexed."
-              )
 
           print(
-              f"Generated {index_name} "
-              f"with {len(rows)} records."
+              f"Updated {index_name} successfully."
           )
 
-          for version in ("1.0", "1.1"):
-              required_name = (
-                  required_releases[version]
-              )
-
-              record = records[
-                  required_name.casefold()
+          for version in sorted(
+              required_releases,
+              key=lambda value: tuple(
+                  int(part)
+                  for part in value.split(".")
+              ),
+          ):
+              path = current_release_files[
+                  version
               ]
 
               print(
                   f"V{version}: "
-                  f"size={record[5]} "
-                  f"sha256={record[4]} "
-                  f"blob={record[3]}"
+                  f"size={path.stat().st_size} "
+                  f"sha256={sha256_file(path)} "
+                  f"blob={git_blob_sha(path)}"
               )
 
-          print(
-              "Release index verification "
-              "completed successfully."
+          notice(
+              "All current manager release records "
+              "were regenerated and verified."
           )
           PY
 
-      - name: Display generated release index
+      - name: Display updated release index
         shell: bash
         env:
           INDEX_FILE: NLH Mod Manager Release Index.txt
         run: |
           set -euo pipefail
 
-          echo "Generated release index:"
+          echo "Updated release index:"
           echo
 
           cat -- "$INDEX_FILE"
@@ -761,13 +665,13 @@ jobs:
 
           git add -- "$INDEX_FILE"
 
-          echo "Staged release-index change:"
-          git diff --cached --stat
-
           if git diff --cached --quiet; then
-            echo "No staged release-index change was found."
+            echo "No staged release-index changes."
             exit 0
           fi
+
+          echo "Staged release-index change:"
+          git diff --cached --stat
 
           git commit \
             -m "Update NLH Mod Manager release index"
@@ -778,7 +682,7 @@ jobs:
           fi
 
           echo "Initial push was rejected."
-          echo "Rebasing the generated commit onto the latest main branch."
+          echo "Rebasing onto the latest main branch."
 
           git pull \
             --rebase \
