@@ -13,19 +13,39 @@ permissions:
 
 concurrency:
   group: nlh-repository-index-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   rebuild-index:
-    runs-on: ubuntu-latest
+    name: Rebuild NLH repository index
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          persist-credentials: true
 
-      - name: Generate repository index
+      - name: Show repository files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Repository root:"
+          pwd
+
+          echo
+          echo "Relevant repository files:"
+
+          find . \
+            -maxdepth 3 \
+            -type f \
+            -not -path "./.git/*" \
+            -print \
+            | sort
+
+      - name: Generate and verify NLH repository index
         shell: bash
         env:
           INDEX_FILE: NLH Repository Index.txt
@@ -37,68 +57,143 @@ jobs:
           import os
           import re
           import subprocess
+          import sys
           from pathlib import Path
-          from urllib.parse import quote
+          from urllib.parse import quote, unquote
 
-          root = Path.cwd()
-          index_name = os.environ["INDEX_FILE"]
-          index_path = root / index_name
+          ROOT = Path.cwd().resolve()
+          INDEX_NAME = os.environ["INDEX_FILE"]
+          INDEX_PATH = ROOT / INDEX_NAME
 
-          index_signature = "NLH-REPOSITORY-INDEX|1"
-          index_header = (
+          INDEX_SIGNATURE = "NLH-REPOSITORY-INDEX|1"
+
+          INDEX_HEADER = (
               "#TYPE|NAME|RAW_PATH|GIT_BLOB_SHA|SHA256|SIZE|VERSION|"
               "CHARACTER|BASE_NAME|PRIVATE_METADATA|CHANGELOG"
           )
 
-          manager_name = "NLH Mod Manager.vbs"
-          squad_profiles_name = "NLH Mod Manager Squad Profiles.txt"
-          icon_name = "NLH_MM.ico"
+          MANAGER_NAME = "NLH Mod Manager.vbs"
 
-          release_pattern = re.compile(
+          SQUAD_PROFILES_NAME = (
+              "NLH Mod Manager Squad Profiles.txt"
+          )
+
+          ICON_NAME = "NLH_MM.ico"
+
+          RELEASE_PATTERN = re.compile(
               r"^NLH Mod Manager Public Release "
               r"V(?P<version>[1-9]\d*\.\d+)\.vbs$",
               re.IGNORECASE,
           )
 
-          release_private_pattern = re.compile(
+          RELEASE_PRIVATE_PATTERN = re.compile(
               r"^NLH Mod Manager Public Release "
               r"V(?P<version>[1-9]\d*\.\d+)_Private\.txt$",
               re.IGNORECASE,
           )
 
-          mod_pattern = re.compile(
-              r"^(?P<character>.+)_(?P<version>\d+(?:\.\d+)*)\.zip$",
+          MOD_PATTERN = re.compile(
+              r"^(?P<character>.+)_"
+              r"(?P<version>\d+(?:\.\d+)*)\.zip$",
               re.IGNORECASE,
           )
 
-          def get_git_blob_sha(path: Path) -> str:
-              result = subprocess.run(
-                  ["git", "hash-object", "--", str(path)],
-                  check=True,
-                  capture_output=True,
-                  text=True,
-              )
-              return result.stdout.strip().lower()
+          PRIVATE_PATTERN = re.compile(
+              r"^(?P<base>.+)_Private\.txt$",
+              re.IGNORECASE,
+          )
 
-          def get_sha256(path: Path) -> str:
+          CHANGELOG_PATTERN = re.compile(
+              r"^(?P<base>.+)_Changelog\.txt$",
+              re.IGNORECASE,
+          )
+
+
+          def fail(message: str) -> None:
+              print(
+                  f"::error title=NLH repository index failure::{message}"
+              )
+              raise SystemExit(message)
+
+
+          def notice(message: str) -> None:
+              print(
+                  f"::notice title=NLH repository index::{message}"
+              )
+
+
+          def warning(message: str) -> None:
+              print(
+                  f"::warning title=NLH repository index::{message}"
+              )
+
+
+          def relative_path(path: Path) -> Path:
+              return path.resolve().relative_to(ROOT)
+
+
+          def normalized_relative_path(path: Path) -> str:
+              return relative_path(path).as_posix()
+
+
+          def raw_path(path: Path) -> str:
+              relative = normalized_relative_path(path)
+
+              return "/".join(
+                  quote(part, safe="")
+                  for part in relative.split("/")
+              )
+
+
+          def decode_raw_path(value: str) -> str:
+              return "/".join(
+                  unquote(part)
+                  for part in value.split("/")
+              )
+
+
+          def sha256_file(path: Path) -> str:
               digest = hashlib.sha256()
 
               with path.open("rb") as stream:
-                  for block in iter(
-                      lambda: stream.read(1024 * 1024),
-                      b"",
-                  ):
+                  while True:
+                      block = stream.read(1024 * 1024)
+
+                      if not block:
+                          break
+
                       digest.update(block)
 
               return digest.hexdigest().lower()
 
-          def get_raw_path(path: Path) -> str:
-              relative_path = path.relative_to(root).as_posix()
 
-              return "/".join(
-                  quote(part, safe="")
-                  for part in relative_path.split("/")
+          def git_blob_sha(path: Path) -> str:
+              result = subprocess.run(
+                  [
+                      "git",
+                      "hash-object",
+                      "--",
+                      normalized_relative_path(path),
+                  ],
+                  cwd=ROOT,
+                  check=True,
+                  capture_output=True,
+                  text=True,
               )
+
+              value = result.stdout.strip().lower()
+
+              if not re.fullmatch(
+                  r"[0-9a-f]{40}",
+                  value,
+              ):
+                  fail(
+                      "git hash-object returned an invalid SHA "
+                      f"for {normalized_relative_path(path)}: {value}"
+                  )
+
+              return value
+
 
           def clean_field(value) -> str:
               return (
@@ -107,6 +202,14 @@ jobs:
                   .replace("\r", "")
                   .replace("\n", "")
               )
+
+
+          def version_key(version: str):
+              return tuple(
+                  int(part)
+                  for part in version.split(".")
+              )
+
 
           def create_row(
               item_type: str,
@@ -117,12 +220,12 @@ jobs:
               private_metadata: str = "",
               changelog: str = "",
           ) -> str:
-              values = [
+              fields = [
                   item_type,
                   path.name,
-                  get_raw_path(path),
-                  get_git_blob_sha(path),
-                  get_sha256(path),
+                  raw_path(path),
+                  git_blob_sha(path),
+                  sha256_file(path),
                   str(path.stat().st_size),
                   version,
                   character,
@@ -131,55 +234,93 @@ jobs:
                   changelog,
               ]
 
-              return "|".join(
-                  clean_field(value)
-                  for value in values
-              )
+              cleaned_fields = [
+                  clean_field(field)
+                  for field in fields
+              ]
 
-          def version_key(version: str):
-              return tuple(
-                  int(part)
-                  for part in version.split(".")
-              )
+              if len(cleaned_fields) != 11:
+                  fail(
+                      "Internal generator error: incorrect "
+                      f"field count for {path.name}"
+                  )
+
+              return "|".join(cleaned_fields)
+
+
+          def is_ignored_path(path: Path) -> bool:
+              relative = relative_path(path)
+
+              if ".git" in relative.parts:
+                  return True
+
+              if (
+                  len(relative.parts) >= 2
+                  and relative.parts[0] == ".github"
+                  and relative.parts[1] == "workflows"
+              ):
+                  return True
+
+              if relative.as_posix() == INDEX_NAME:
+                  return True
+
+              return False
+
 
           all_files = sorted(
               (
                   path
-                  for path in root.rglob("*")
+                  for path in ROOT.rglob("*")
                   if path.is_file()
-                  and ".git" not in path.parts
-                  and path.relative_to(root).as_posix() != index_name
+                  and not is_ignored_path(path)
               ),
               key=lambda path: (
-                  path.relative_to(root)
-                  .as_posix()
-                  .casefold()
+                  normalized_relative_path(path).casefold()
               ),
           )
 
-          files_by_name = {
-              path.name.casefold(): path
-              for path in all_files
-          }
+          if not all_files:
+              fail(
+                  "No repository files were discovered."
+              )
 
-          rows = []
+          files_by_name = {}
+
+          for path in all_files:
+              key = path.name.casefold()
+
+              if key in files_by_name:
+                  existing = files_by_name[key]
+
+                  fail(
+                      "Duplicate filename found in different "
+                      "locations: "
+                      f"{normalized_relative_path(existing)} and "
+                      f"{normalized_relative_path(path)}"
+                  )
+
+              files_by_name[key] = path
 
           manager_path = files_by_name.get(
-              manager_name.casefold()
+              MANAGER_NAME.casefold()
           )
 
           if manager_path is None:
-              raise SystemExit(
-                  f"Required launcher is missing: {manager_name}"
+              available_vbs = sorted(
+                  path.name
+                  for path in all_files
+                  if path.suffix.casefold() == ".vbs"
               )
 
-          rows.append(
-              create_row(
-                  "MANAGER",
-                  manager_path,
-                  base_name=manager_path.stem,
+              fail(
+                  f"Required launcher is missing: {MANAGER_NAME}. "
+                  "VBS files found: "
+                  + (
+                      ", ".join(available_vbs)
+                      if available_vbs
+                      else "none"
+                  )
               )
-          )
 
           releases = []
           release_private_files = []
@@ -187,6 +328,7 @@ jobs:
           icon_files = []
           mods = []
           private_files = []
+          changelog_files = []
 
           for path in all_files:
               if path == manager_path:
@@ -194,9 +336,11 @@ jobs:
 
               name = path.name
 
-              release_match = release_pattern.fullmatch(name)
+              release_match = RELEASE_PATTERN.fullmatch(
+                  name
+              )
 
-              if release_match:
+              if release_match is not None:
                   releases.append(
                       (
                           path,
@@ -206,32 +350,34 @@ jobs:
                   continue
 
               release_private_match = (
-                  release_private_pattern.fullmatch(name)
+                  RELEASE_PRIVATE_PATTERN.fullmatch(name)
               )
 
-              if release_private_match:
+              if release_private_match is not None:
                   release_private_files.append(
                       (
                           path,
-                          release_private_match.group("version"),
+                          release_private_match.group(
+                              "version"
+                          ),
                       )
                   )
                   continue
 
               if (
                   name.casefold()
-                  == squad_profiles_name.casefold()
+                  == SQUAD_PROFILES_NAME.casefold()
               ):
                   squad_profile_files.append(path)
                   continue
 
-              if name.casefold() == icon_name.casefold():
+              if name.casefold() == ICON_NAME.casefold():
                   icon_files.append(path)
                   continue
 
-              mod_match = mod_pattern.fullmatch(name)
+              mod_match = MOD_PATTERN.fullmatch(name)
 
-              if mod_match:
+              if mod_match is not None:
                   mods.append(
                       (
                           path,
@@ -241,15 +387,97 @@ jobs:
                   )
                   continue
 
-              if name.casefold().endswith("_private.txt"):
+              private_match = PRIVATE_PATTERN.fullmatch(
+                  name
+              )
+
+              if private_match is not None:
                   private_files.append(path)
+                  continue
+
+              changelog_match = (
+                  CHANGELOG_PATTERN.fullmatch(name)
+              )
+
+              if changelog_match is not None:
+                  changelog_files.append(path)
+                  continue
+
+          if not releases:
+              available_vbs = sorted(
+                  path.name
+                  for path in all_files
+                  if path.suffix.casefold() == ".vbs"
+              )
+
+              fail(
+                  "No public manager releases were discovered. "
+                  "Expected filenames such as "
+                  "'NLH Mod Manager Public Release V1.0.vbs'. "
+                  "VBS files found: "
+                  + ", ".join(available_vbs)
+              )
+
+          release_versions = {}
+
+          for path, version in releases:
+              if version in release_versions:
+                  fail(
+                      "Duplicate manager release version "
+                      f"V{version}: "
+                      f"{release_versions[version].name} and "
+                      f"{path.name}"
+                  )
+
+              release_versions[version] = path
+
+          required_releases = {
+              "1.0": (
+                  "NLH Mod Manager Public Release "
+                  "V1.0.vbs"
+              ),
+              "1.1": (
+                  "NLH Mod Manager Public Release "
+                  "V1.1.vbs"
+              ),
+          }
+
+          for version, expected_name in (
+              required_releases.items()
+          ):
+              path = release_versions.get(version)
+
+              if path is None:
+                  fail(
+                      f"Required release V{version} is missing: "
+                      f"{expected_name}"
+                  )
+
+              if path.name != expected_name:
+                  fail(
+                      f"Release V{version} has the wrong "
+                      f"filename: {path.name}. "
+                      f"Expected: {expected_name}"
+                  )
+
+          rows = []
+
+          rows.append(
+              create_row(
+                  "MANAGER",
+                  manager_path,
+                  base_name=manager_path.stem,
+              )
+          )
 
           for path, version in sorted(
               releases,
               key=lambda item: version_key(item[1]),
           ):
               base_name = path.stem
-              private_name = f"{base_name}_Private.txt"
+              private_name = (
+                  f"{base_name}_Private.txt"
+              )
 
               if (
                   private_name.casefold()
@@ -328,21 +556,21 @@ jobs:
                   f"{base_name}_Changelog.txt"
               )
 
+              private_metadata = ""
+
               if (
                   private_name.casefold()
                   in files_by_name
               ):
                   private_metadata = private_name
-              else:
-                  private_metadata = ""
+
+              changelog = ""
 
               if (
                   changelog_name.casefold()
                   in files_by_name
               ):
                   changelog = changelog_name
-              else:
-                  changelog = ""
 
               rows.append(
                   create_row(
@@ -358,7 +586,7 @@ jobs:
 
           release_private_names = {
               path.name.casefold()
-              for path, _ in release_private_files
+              for path, version in release_private_files
           }
 
           for path in sorted(
@@ -384,101 +612,68 @@ jobs:
               )
 
           output_lines = [
-              index_signature,
-              index_header,
+              INDEX_SIGNATURE,
+              INDEX_HEADER,
               *rows,
           ]
 
           output = "\n".join(output_lines) + "\n"
 
-          index_path.write_text(
+          INDEX_PATH.write_text(
               output,
               encoding="utf-8",
               newline="\n",
           )
 
-          print(
-              f"Generated {index_name} "
+          notice(
+              f"Generated {INDEX_NAME} "
               f"with {len(rows)} records."
           )
-          PY
 
-      - name: Verify generated index
-        shell: bash
-        env:
-          INDEX_FILE: NLH Repository Index.txt
-        run: |
-          set -euo pipefail
-
-          python3 <<'PY'
-          import hashlib
-          import os
-          import subprocess
-          from pathlib import Path
-          from urllib.parse import quote
-
-          index_path = Path(os.environ["INDEX_FILE"])
-
-          expected_signature = (
-              "NLH-REPOSITORY-INDEX|1"
-          )
-
-          expected_header = (
-              "#TYPE|NAME|RAW_PATH|GIT_BLOB_SHA|SHA256|SIZE|VERSION|"
-              "CHARACTER|BASE_NAME|PRIVATE_METADATA|CHANGELOG"
-          )
-
-          if not index_path.is_file():
-              raise SystemExit(
-                  "The generated repository index is missing."
-              )
-
-          lines = index_path.read_text(
+          generated_lines = INDEX_PATH.read_text(
               encoding="utf-8"
           ).splitlines()
 
-          if not lines:
-              raise SystemExit(
-                  "The generated repository index is empty."
+          if len(generated_lines) < 2:
+              fail(
+                  "The generated index is incomplete."
               )
 
-          if lines[0] != expected_signature:
-              raise SystemExit(
-                  "Invalid repository-index signature."
+          if (
+              generated_lines[0]
+              != INDEX_SIGNATURE
+          ):
+              fail(
+                  "The generated index signature is invalid."
               )
 
-          if len(lines) < 2:
-              raise SystemExit(
-                  "The repository-index header is missing."
+          if generated_lines[1] != INDEX_HEADER:
+              fail(
+                  "The generated index header is invalid."
               )
 
-          if lines[1] != expected_header:
-              raise SystemExit(
-                  "Invalid repository-index header."
-              )
-
-          records = {}
-          duplicate_names = set()
+          records_by_name = {}
+          records_by_raw_path = {}
 
           for line_number, line in enumerate(
-              lines[2:],
+              generated_lines[2:],
               start=3,
           ):
               fields = line.split("|")
 
               if len(fields) != 11:
-                  raise SystemExit(
-                      f"Invalid field count on line "
-                      f"{line_number}: {len(fields)}"
+                  fail(
+                      f"Index line {line_number} has "
+                      f"{len(fields)} fields instead of 11."
                   )
 
               (
                   item_type,
                   name,
-                  raw_path,
-                  git_blob_sha,
-                  sha256_value,
-                  size,
+                  encoded_raw_path,
+                  stored_blob_sha,
+                  stored_sha256,
+                  stored_size,
                   version,
                   character,
                   base_name,
@@ -487,91 +682,116 @@ jobs:
               ) = fields
 
               if not item_type:
-                  raise SystemExit(
-                      f"Missing type on line {line_number}."
+                  fail(
+                      f"Index line {line_number} "
+                      "has no TYPE value."
                   )
 
               if not name:
-                  raise SystemExit(
-                      f"Missing filename on line "
-                      f"{line_number}."
+                  fail(
+                      f"Index line {line_number} "
+                      "has no NAME value."
                   )
 
-              name_key = name.casefold()
-
-              if name_key in records:
-                  duplicate_names.add(name)
-
-              records[name_key] = fields
-
-              path = Path(name)
-
-              if not path.is_file():
-                  raise SystemExit(
-                      f"Indexed file is missing: {name}"
-                  )
-
-              expected_raw_path = "/".join(
-                  quote(part, safe="")
-                  for part in path.as_posix().split("/")
+              decoded_relative_path = decode_raw_path(
+                  encoded_raw_path
               )
 
-              if raw_path != expected_raw_path:
-                  raise SystemExit(
-                      f"RAW_PATH mismatch: {name}"
+              indexed_path = (
+                  ROOT / decoded_relative_path
+              ).resolve()
+
+              try:
+                  indexed_path.relative_to(ROOT)
+              except ValueError:
+                  fail(
+                      f"Index line {line_number} points "
+                      "outside the repository: "
+                      f"{encoded_raw_path}"
                   )
 
-              blob_result = subprocess.run(
-                  [
-                      "git",
-                      "hash-object",
-                      "--",
-                      str(path),
-                  ],
-                  check=True,
-                  capture_output=True,
-                  text=True,
+              if not indexed_path.is_file():
+                  fail(
+                      f"Indexed file does not exist: "
+                      f"{decoded_relative_path}"
+                  )
+
+              if indexed_path.name != name:
+                  fail(
+                      f"NAME and RAW_PATH disagree on "
+                      f"line {line_number}: "
+                      f"{name} versus "
+                      f"{decoded_relative_path}"
+                  )
+
+              expected_raw_path = raw_path(
+                  indexed_path
               )
 
-              expected_blob_sha = (
-                  blob_result.stdout
-                  .strip()
-                  .lower()
+              if encoded_raw_path != expected_raw_path:
+                  fail(
+                      f"RAW_PATH mismatch for {name}. "
+                      f"Stored: {encoded_raw_path}. "
+                      f"Expected: {expected_raw_path}."
+                  )
+
+              expected_blob_sha = git_blob_sha(
+                  indexed_path
               )
 
               if (
-                  git_blob_sha.lower()
+                  stored_blob_sha.lower()
                   != expected_blob_sha
               ):
-                  raise SystemExit(
-                      f"Git blob SHA mismatch: {name}"
+                  fail(
+                      f"Git blob SHA mismatch for {name}. "
+                      f"Stored: {stored_blob_sha}. "
+                      f"Expected: {expected_blob_sha}."
                   )
 
-              expected_sha256 = hashlib.sha256(
-                  path.read_bytes()
-              ).hexdigest()
+              expected_sha256 = sha256_file(
+                  indexed_path
+              )
 
-              if sha256_value.lower() != expected_sha256:
-                  raise SystemExit(
-                      f"SHA-256 mismatch: {name}"
+              if (
+                  stored_sha256.lower()
+                  != expected_sha256
+              ):
+                  fail(
+                      f"SHA-256 mismatch for {name}. "
+                      f"Stored: {stored_sha256}. "
+                      f"Expected: {expected_sha256}."
                   )
 
               expected_size = str(
-                  path.stat().st_size
+                  indexed_path.stat().st_size
               )
 
-              if size != expected_size:
-                  raise SystemExit(
-                      f"Size mismatch: {name}"
+              if stored_size != expected_size:
+                  fail(
+                      f"Size mismatch for {name}. "
+                      f"Stored: {stored_size}. "
+                      f"Expected: {expected_size}."
                   )
 
-          if duplicate_names:
-              raise SystemExit(
-                  "Duplicate index filenames: "
-                  + ", ".join(sorted(duplicate_names))
-              )
+              name_key = name.casefold()
+              raw_key = encoded_raw_path.casefold()
 
-          required_files = [
+              if name_key in records_by_name:
+                  fail(
+                      f"Duplicate index NAME: {name}"
+                  )
+
+              if raw_key in records_by_raw_path:
+                  fail(
+                      "Duplicate index RAW_PATH: "
+                      f"{encoded_raw_path}"
+                  )
+
+              records_by_name[name_key] = fields
+              records_by_raw_path[raw_key] = fields
+
+          required_records = [
               (
                   "MANAGER",
                   "NLH Mod Manager.vbs",
@@ -579,90 +799,136 @@ jobs:
               ),
               (
                   "RELEASE",
-                  "NLH Mod Manager Public Release V1.0.vbs",
+                  (
+                      "NLH Mod Manager Public "
+                      "Release V1.0.vbs"
+                  ),
                   "1.0",
               ),
               (
                   "RELEASE",
-                  "NLH Mod Manager Public Release V1.1.vbs",
+                  (
+                      "NLH Mod Manager Public "
+                      "Release V1.1.vbs"
+                  ),
                   "1.1",
               ),
           ]
 
           for (
               expected_type,
-              name,
+              required_name,
               expected_version,
-          ) in required_files:
-              record = records.get(name.casefold())
+          ) in required_records:
+              record = records_by_name.get(
+                  required_name.casefold()
+              )
 
               if record is None:
-                  raise SystemExit(
-                      f"Required file is absent "
-                      f"from the index: {name}"
+                  fail(
+                      "Required file is absent from "
+                      f"the generated index: {required_name}"
                   )
 
               if record[0] != expected_type:
-                  raise SystemExit(
-                      f"Incorrect index type for {name}: "
-                      f"{record[0]}"
+                  fail(
+                      f"Incorrect TYPE for {required_name}. "
+                      f"Stored: {record[0]}. "
+                      f"Expected: {expected_type}."
                   )
 
               if (
                   expected_version
                   and record[6] != expected_version
               ):
-                  raise SystemExit(
-                      f"Incorrect version for {name}: "
-                      f"{record[6]}"
+                  fail(
+                      f"Incorrect VERSION for "
+                      f"{required_name}. "
+                      f"Stored: {record[6]}. "
+                      f"Expected: {expected_version}."
                   )
 
-          v11_record = records[
-              (
-                  "NLH Mod Manager Public "
-                  "Release V1.1.vbs"
-              ).casefold()
-          ]
+          v11_name = (
+              "NLH Mod Manager Public "
+              "Release V1.1.vbs"
+          )
 
           v11_private_name = (
               "NLH Mod Manager Public "
               "Release V1.1_Private.txt"
           )
 
-          if (
+          v11_record = records_by_name[
+              v11_name.casefold()
+          ]
+
+          v11_private_record = records_by_name.get(
               v11_private_name.casefold()
-              in records
-          ):
-              if (
-                  v11_record[9]
-                  != v11_private_name
-              ):
-                  raise SystemExit(
-                      "The V1.1 release does not reference "
-                      "its private metadata file."
+          )
+
+          if v11_private_record is not None:
+              if v11_record[9] != v11_private_name:
+                  fail(
+                      "The V1.1 RELEASE row does not "
+                      "reference its private metadata file."
                   )
 
-              private_record = records[
-                  v11_private_name.casefold()
+              if (
+                  v11_private_record[0]
+                  != "RELEASE_PRIVATE"
+              ):
+                  fail(
+                      "The V1.1 private metadata row "
+                      "does not use RELEASE_PRIVATE."
+                  )
+
+              if v11_private_record[6] != "1.1":
+                  fail(
+                      "The V1.1 private metadata row "
+                      "does not contain VERSION 1.1."
+                  )
+          elif v11_recordfail(
+                  "The V1.1 RELEASE row references "
+                  "private metadata that is not indexed."
+              )
+
+          print()
+          print("Generated release records:")
+
+          for version in sorted(
+              required_releases,
+              key=version_key,
+          ):
+              name = required_releases[version]
+              record = records_by_name[
+                  name.casefold()
               ]
 
-              if private_record[0] != "RELEASE_PRIVATE":
-                  raise SystemExit(
-                      "The V1.1 private metadata record "
-                      "has the wrong type."
-                  )
+              print(
+                  f"V{version}: "
+                  f"size={record[5]}, "
+                  f"sha256={record[4]}, "
+                  f"blob={record[3]}"
+              )
 
-              if private_record[6] != "1.1":
-                  raise SystemExit(
-                      "The V1.1 private metadata record "
-                      "has the wrong version."
-                  )
-
+          print()
           print(
-              "Repository index verification completed "
-              "successfully."
+              "Repository index generation and "
+              "verification completed successfully."
           )
           PY
+
+      - name: Display generated index
+        shell: bash
+        env:
+          INDEX_FILE: NLH Repository Index.txt
+        run: |
+          set -euo pipefail
+
+          echo "Generated index contents:"
+          echo
+
+          cat -- "$INDEX_FILE"
 
       - name: Commit updated index
         shell: bash
@@ -689,4 +955,12 @@ jobs:
           git commit \
             -m "Update NLH repository index"
 
-          git push
+          git pull \
+            --rebase \
+            --autostash \
+            origin \
+            main
+
+          git push \
+            origin \
+            HEAD:main
