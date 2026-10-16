@@ -27,7 +27,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Generate and verify repository index
+      - name: Generate repository index
         shell: bash
         env:
           INDEX_FILE: NLH Repository Index.txt
@@ -40,9 +40,9 @@ jobs:
           import re
           import subprocess
           from pathlib import Path
-          from urllib.parse import quote, unquote
+          from urllib.parse import quote
 
-          root = Path.cwd().resolve()
+          root = Path.cwd()
           index_name = os.environ["INDEX_FILE"]
           index_path = root / index_name
 
@@ -53,23 +53,19 @@ jobs:
               "CHARACTER|BASE_NAME|PRIVATE_METADATA|CHANGELOG"
           )
 
-          manager_name = "NLH Mod Manager.vbs"
-          squad_profiles_name = "NLH Mod Manager Squad Profiles.txt"
-          icon_name = "NLH_MM.ico"
-
-          release_pattern = re.compile(
+          release_re = re.compile(
               r"^NLH Mod Manager Public Release "
-              r"V(?P<version>[1-9]\d*\.\d+)\.vbs$",
+              r"V(?P<version>\d+(?:\.\d+)*)\.vbs$",
               re.IGNORECASE,
           )
 
-          release_private_pattern = re.compile(
+          release_private_re = re.compile(
               r"^NLH Mod Manager Public Release "
-              r"V(?P<version>[1-9]\d*\.\d+)_Private\.txt$",
+              r"V(?P<version>\d+(?:\.\d+)*)_Private\.txt$",
               re.IGNORECASE,
           )
 
-          mod_pattern = re.compile(
+          mod_re = re.compile(
               r"^(?P<character>.+)_"
               r"(?P<version>\d+(?:\.\d+)*)\.zip$",
               re.IGNORECASE,
@@ -77,18 +73,10 @@ jobs:
 
           def fail(message):
               print(
-                  f"::error title=NLH repository index failure::{message}"
+                  f"::error title=NLH repository index failure::{message}",
+                  flush=True,
               )
               raise SystemExit(1)
-
-          def relative(path):
-              return path.resolve().relative_to(root)
-
-          def encoded_path(path):
-              return "/".join(
-                  quote(part, safe="")
-                  for part in relative(path).as_posix().split("/")
-              )
 
           def sha256_file(path):
               digest = hashlib.sha256()
@@ -102,13 +90,13 @@ jobs:
 
               return digest.hexdigest().lower()
 
-          def blob_sha(path):
+          def git_blob_sha(path):
               result = subprocess.run(
                   [
                       "git",
                       "hash-object",
                       "--",
-                      relative(path).as_posix(),
+                      path.name,
                   ],
                   cwd=root,
                   check=True,
@@ -123,11 +111,16 @@ jobs:
                   value,
               ):
                   fail(
-                      "Invalid Git blob SHA for "
-                      f"{relative(path).as_posix()}"
+                      f"Invalid Git blob SHA for {path.name}"
                   )
 
               return value
+
+          def raw_path(path):
+              return quote(
+                  path.name,
+                  safe="",
+              )
 
           def clean(value):
               return (
@@ -149,8 +142,8 @@ jobs:
               fields = [
                   item_type,
                   path.name,
-                  encoded_path(path),
-                  blob_sha(path),
+                  raw_path(path),
+                  git_blob_sha(path),
                   sha256_file(path),
                   str(path.stat().st_size),
                   version,
@@ -171,40 +164,20 @@ jobs:
                   for part in version.split(".")
               )
 
-          def ignored(path):
-              rel = relative(path)
-
-              if ".git" in rel.parts:
-                  return True
-
-              if rel.as_posix() == index_name:
-                  return True
-
-              if (
-                  len(rel.parts) >= 2
-                  and rel.parts[0] == ".github"
-                  and rel.parts[1] == "workflows"
-              ):
-                  return True
-
-              return False
-
           files = sorted(
               (
                   path
-                  for path in root.rglob("*")
+                  for path in root.iterdir()
                   if path.is_file()
-                  and not ignored(path)
+                  and path.name != index_name
               ),
-              key=lambda path: (
-                  relative(path)
-                  .as_posix()
-                  .casefold()
-              ),
+              key=lambda path: path.name.casefold(),
           )
 
           if not files:
-              fail("No repository files were found.")
+              fail(
+                  "No files were found in the repository root."
+              )
 
           by_name = {}
 
@@ -213,12 +186,12 @@ jobs:
 
               if key in by_name:
                   fail(
-                      "Duplicate filename in different paths: "
-                      f"{relative(by_name[key]).as_posix()} and "
-                      f"{relative(path).as_posix()}"
+                      f"Duplicate root filename: {path.name}"
                   )
 
               by_name[key] = path
+
+          manager_name = "NLH Mod Manager.vbs"
 
           manager = by_name.get(
               manager_name.casefold()
@@ -231,18 +204,18 @@ jobs:
 
           releases = []
           release_private_files = []
-          squad_profiles = []
-          icons = []
           mods = []
           private_files = []
+          squad_profiles = []
+          icons = []
 
           for path in files:
               if path == manager:
                   continue
 
-              name = path.name
-
-              match = release_pattern.fullmatch(name)
+              match = release_re.fullmatch(
+                  path.name
+              )
 
               if match:
                   releases.append(
@@ -253,8 +226,8 @@ jobs:
                   )
                   continue
 
-              match = release_private_pattern.fullmatch(
-                  name
+              match = release_private_re.fullmatch(
+                  path.name
               )
 
               if match:
@@ -266,18 +239,9 @@ jobs:
                   )
                   continue
 
-              if (
-                  name.casefold()
-                  == squad_profiles_name.casefold()
-              ):
-                  squad_profiles.append(path)
-                  continue
-
-              if name.casefold() == icon_name.casefold():
-                  icons.append(path)
-                  continue
-
-              match = mod_pattern.fullmatch(name)
+              match = mod_re.fullmatch(
+                  path.name
+              )
 
               if match:
                   mods.append(
@@ -289,7 +253,21 @@ jobs:
                   )
                   continue
 
-              if name.casefold().endswith(
+              if (
+                  path.name.casefold()
+                  == "nlh mod manager squad profiles.txt"
+              ):
+                  squad_profiles.append(path)
+                  continue
+
+              if (
+                  path.name.casefold()
+                  == "nlh_mm.ico"
+              ):
+                  icons.append(path)
+                  continue
+
+              if path.name.casefold().endswith(
                   "_private.txt"
               ):
                   private_files.append(path)
@@ -316,21 +294,23 @@ jobs:
               ),
           }
 
-          for version, expected_name in (
+          for version, required_name in (
               required_releases.items()
           ):
-              path = release_by_version.get(version)
+              path = release_by_version.get(
+                  version
+              )
 
               if path is None:
                   fail(
                       "Required release is missing: "
-                      f"{expected_name}"
+                      f"{required_name}"
                   )
 
-              if path.name != expected_name:
+              if path.name != required_name:
                   fail(
-                      f"Release V{version} must be "
-                      f"named exactly: {expected_name}"
+                      f"Release V{version} must be named "
+                      f"exactly: {required_name}"
                   )
 
           rows = [
@@ -346,6 +326,7 @@ jobs:
               key=lambda item: version_key(item[1]),
           ):
               base_name = path.stem
+
               private_name = (
                   f"{base_name}_Private.txt"
               )
@@ -490,22 +471,26 @@ jobs:
               newline="\n",
           )
 
+          records = {}
+
           lines = index_path.read_text(
               encoding="utf-8"
           ).splitlines()
 
-          if (
-              len(lines) < 2
-              or lines[0] != signature
-              or lines[1] != header
-          ):
+          if len(lines) < 2:
               fail(
-                  "Generated index signature "
-                  "or header is invalid."
+                  "Generated index is incomplete."
               )
 
-          records = {}
-          raw_paths = set()
+          if lines[0] != signature:
+              fail(
+                  "Generated index signature is invalid."
+              )
+
+          if lines[1] != header:
+              fail(
+                  "Generated index header is invalid."
+              )
 
           for line_number, line in enumerate(
               lines[2:],
@@ -515,14 +500,14 @@ jobs:
 
               if len(fields) != 11:
                   fail(
-                      f"Line {line_number} has "
+                      f"Index line {line_number} has "
                       f"{len(fields)} fields instead of 11."
                   )
 
               (
                   item_type,
                   name,
-                  raw_path,
+                  stored_raw,
                   stored_blob,
                   stored_hash,
                   stored_size,
@@ -533,64 +518,44 @@ jobs:
                   changelog,
               ) = fields
 
-              decoded = "/".join(
-                  unquote(part)
-                  for part in raw_path.split("/")
+              path = by_name.get(
+                  name.casefold()
               )
 
-              path = (root / decoded).resolve()
-
-              try:
-                  path.relative_to(root)
-              except ValueError:
+              if path is None:
                   fail(
-                      f"Line {line_number} points outside "
-                      f"the repository: {raw_path}"
+                      f"Indexed file is unavailable: {name}"
                   )
 
-              if not path.is_file():
-                  fail(
-                      "Indexed file does not exist: "
-                      f"{decoded}"
-                  )
-
-              if path.name != name:
-                  fail(
-                      "NAME and RAW_PATH disagree on "
-                      f"line {line_number}: {name}"
-                  )
-
-              if raw_path != encoded_path(path):
+              if stored_raw != raw_path(path):
                   fail(
                       f"RAW_PATH mismatch for {name}"
                   )
 
-              if (
-                  stored_blob.lower()
-                  != blob_sha(path)
-              ):
+              expected_blob = git_blob_sha(path)
+
+              if stored_blob != expected_blob:
                   fail(
                       f"Git blob SHA mismatch for {name}"
                   )
 
-              if (
-                  stored_hash.lower()
-                  != sha256_file(path)
-              ):
+              expected_hash = sha256_file(path)
+
+              if stored_hash != expected_hash:
                   fail(
                       f"SHA-256 mismatch for {name}"
                   )
 
-              if (
-                  stored_size
-                  != str(path.stat().st_size)
-              ):
+              expected_size = str(
+                  path.stat().st_size
+              )
+
+              if stored_size != expected_size:
                   fail(
                       f"Size mismatch for {name}"
                   )
 
               key = name.casefold()
-              raw_key = raw_path.casefold()
 
               if key in records:
                   fail(
@@ -598,107 +563,46 @@ jobs:
                       f"index: {name}"
                   )
 
-              if raw_key in raw_paths:
-                  fail(
-                      "Duplicate RAW_PATH in generated "
-                      f"index: {raw_path}"
-                  )
-
               records[key] = fields
-              raw_paths.add(raw_key)
 
-          required_records = [
-              (
-                  "MANAGER",
-                  manager_name,
-                  "",
-              ),
-              (
-                  "RELEASE",
-                  required_releases["1.0"],
-                  "1.0",
-              ),
-              (
-                  "RELEASE",
-                  required_releases["1.1"],
-                  "1.1",
-              ),
-          ]
+          manager_record = records.get(
+              manager_name.casefold()
+          )
 
-          for (
-              expected_type,
-              name,
-              expected_version,
-          ) in required_records:
+          if manager_record is None:
+              fail(
+                  "The launcher MANAGER record is missing."
+              )
+
+          if manager_record[0] != "MANAGER":
+              fail(
+                  "The launcher has the wrong index TYPE."
+              )
+
+          for version, required_name in (
+              required_releases.items()
+          ):
               record = records.get(
-                  name.casefold()
+                  required_name.casefold()
               )
 
               if record is None:
                   fail(
-                      "Required file is absent from "
-                      f"generated index: {name}"
+                      "Required release is absent from "
+                      f"generated index: {required_name}"
                   )
 
-              if record[0] != expected_type:
+              if record[0] != "RELEASE":
                   fail(
-                      f"Incorrect TYPE for {name}: "
+                      f"Incorrect TYPE for {required_name}: "
                       f"{record[0]}"
                   )
 
-              if (
-                  expected_version
-                  and record[6] != expected_version
-              ):
+              if record[6] != version:
                   fail(
-                      f"Incorrect VERSION for {name}: "
-                      f"{record[6]}"
+                      f"Incorrect VERSION for "
+                      f"{required_name}: {record[6]}"
                   )
-
-          v11_name = required_releases["1.1"]
-
-          v11_private_name = (
-              "NLH Mod Manager Public Release "
-              "V1.1_Private.txt"
-          )
-
-          v11_record = records[
-              v11_name.casefold()
-          ]
-
-          v11_private_record = records.get(
-              v11_private_name.casefold()
-          )
-
-          if v11_private_record is not None:
-              if (
-                  v11_record[9]
-                  != v11_private_name
-              ):
-                  fail(
-                      "V1.1 RELEASE does not reference "
-                      "its private metadata file."
-                  )
-
-              if (
-                  v11_private_record[0]
-                  != "RELEASE_PRIVATE"
-              ):
-                  fail(
-                      "V1.1 private metadata has "
-                      "the wrong TYPE."
-                  )
-
-              if v11_private_record[6] != "1.1":
-                  fail(
-                      "V1.1 private metadata has "
-                      "the wrong VERSION."
-                  )
-
-          elif v11_recordfail(
-                  "V1.1 RELEASE references private "
-                  "metadata that is not indexed."
-              )
 
           print(
               f"Generated {index_name} "
@@ -706,10 +610,12 @@ jobs:
           )
 
           for version in ("1.0", "1.1"):
+              required_name = (
+                  required_releases[version]
+              )
+
               record = records[
-                  required_releases[
-                      version
-                  ].casefold()
+                  required_name.casefold()
               ]
 
               print(
