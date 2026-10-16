@@ -1,23 +1,23 @@
-name: Rebuild NLH Repository Index
+name: Rebuild NLH Mod Manager Release Index
 
 on:
   push:
     branches:
       - main
     paths-ignore:
-      - "NLH Repository Index.txt"
+      - "NLH Mod Manager Release Index.txt"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: nlh-repository-index-main
+  group: nlh-manager-release-index-main
   cancel-in-progress: false
 
 jobs:
   rebuild-index:
-    name: Rebuild NLH repository index
+    name: Rebuild NLH Mod Manager release index
     runs-on: ubuntu-24.04
 
     steps:
@@ -27,10 +27,10 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Generate repository index
+      - name: Generate and verify release index
         shell: bash
         env:
-          INDEX_FILE: NLH Repository Index.txt
+          INDEX_FILE: NLH Mod Manager Release Index.txt
         run: |
           set -euo pipefail
 
@@ -53,21 +53,19 @@ jobs:
               "CHARACTER|BASE_NAME|PRIVATE_METADATA|CHANGELOG"
           )
 
-          manager_name = "NLH Mod Manager.vbs"
-
-          release_pattern = re.compile(
+          release_re = re.compile(
               r"^NLH Mod Manager Public Release "
               r"V(?P<version>\d+(?:\.\d+)*)\.vbs$",
               re.IGNORECASE,
           )
 
-          release_private_pattern = re.compile(
+          release_private_re = re.compile(
               r"^NLH Mod Manager Public Release "
               r"V(?P<version>\d+(?:\.\d+)*)_Private\.txt$",
               re.IGNORECASE,
           )
 
-          mod_pattern = re.compile(
+          mod_re = re.compile(
               r"^(?P<character>.+)_"
               r"(?P<version>\d+(?:\.\d+)*)\.zip$",
               re.IGNORECASE,
@@ -75,22 +73,10 @@ jobs:
 
           def fail(message):
               print(
-                  f"::error title=NLH repository index failure::{message}",
+                  f"::error title=NLH release index failure::{message}",
                   flush=True,
               )
               raise SystemExit(1)
-
-          def warning(message):
-              print(
-                  f"::warning title=NLH repository index::{message}",
-                  flush=True,
-              )
-
-          def notice(message):
-              print(
-                  f"::notice title=NLH repository index::{message}",
-                  flush=True,
-              )
 
           def sha256_file(path):
               digest = hashlib.sha256()
@@ -178,25 +164,6 @@ jobs:
                   for part in version.split(".")
               )
 
-          preserved_manager_row = None
-
-          if index_path.is_file():
-              existing_lines = index_path.read_text(
-                  encoding="utf-8-sig"
-              ).splitlines()
-
-              for existing_line in existing_lines[2:]:
-                  existing_fields = existing_line.split("|")
-
-                  if (
-                      len(existing_fields) == 11
-                      and existing_fields[0] == "MANAGER"
-                      and existing_fields[1].casefold()
-                      == manager_name.casefold()
-                  ):
-                      preserved_manager_row = existing_line
-                      break
-
           files = sorted(
               (
                   path
@@ -209,7 +176,7 @@ jobs:
 
           if not files:
               fail(
-                  "No files were found in the repository root."
+                  "No files were found in the repository root"
               )
 
           by_name = {}
@@ -224,22 +191,27 @@ jobs:
 
               by_name[key] = path
 
+          manager_name = "NLH Mod Manager.vbs"
+
           manager = by_name.get(
               manager_name.casefold()
           )
 
           releases = []
           release_private_files = []
-          mods = []
-          private_files = []
           squad_profiles = []
           icons = []
+          mods = []
+          private_files = []
 
           for path in files:
-              if manager is not None and path == manager:
+              if (
+                  manager is not None
+                  and path == manager
+              ):
                   continue
 
-              match = release_pattern.fullmatch(
+              match = release_re.fullmatch(
                   path.name
               )
 
@@ -252,7 +224,7 @@ jobs:
                   )
                   continue
 
-              match = release_private_pattern.fullmatch(
+              match = release_private_re.fullmatch(
                   path.name
               )
 
@@ -261,20 +233,6 @@ jobs:
                       (
                           path,
                           match.group("version"),
-                      )
-                  )
-                  continue
-
-              match = mod_pattern.fullmatch(
-                  path.name
-              )
-
-              if match:
-                  mods.append(
-                      (
-                          path,
-                          match.group("version"),
-                          match.group("character"),
                       )
                   )
                   continue
@@ -291,6 +249,20 @@ jobs:
                   == "nlh_mm.ico"
               ):
                   icons.append(path)
+                  continue
+
+              match = mod_re.fullmatch(
+                  path.name
+              )
+
+              if match:
+                  mods.append(
+                      (
+                          path,
+                          match.group("version"),
+                          match.group("character"),
+                      )
+                  )
                   continue
 
               if path.name.casefold().endswith(
@@ -335,8 +307,8 @@ jobs:
 
               if path.name != required_name:
                   fail(
-                      f"Release V{version} must be named "
-                      f"exactly: {required_name}"
+                      f"Release V{version} must be "
+                      f"named exactly: {required_name}"
                   )
 
           rows = []
@@ -348,28 +320,6 @@ jobs:
                       manager,
                       base_name=manager.stem,
                   )
-              )
-
-              notice(
-                  "The MANAGER row was regenerated from "
-                  "NLH Mod Manager.vbs."
-              )
-
-          elif preserved_manager_row is not None:
-              rows.append(
-                  preserved_manager_row
-              )
-
-              warning(
-                  "NLH Mod Manager.vbs is absent from the repository. "
-                  "The existing MANAGER row was preserved unchanged."
-              )
-
-          else:
-              warning(
-                  "NLH Mod Manager.vbs is absent and no existing "
-                  "MANAGER row could be preserved. The generated "
-                  "index will not contain a MANAGER row."
               )
 
           for path, version in sorted(
@@ -528,17 +478,19 @@ jobs:
 
           if len(lines) < 2:
               fail(
-                  "Generated index is incomplete."
+                  "Generated release index is incomplete"
               )
 
           if lines[0] != signature:
               fail(
-                  "Generated index signature is invalid."
+                  "Generated release index signature "
+                  "is invalid"
               )
 
           if lines[1] != header:
               fail(
-                  "Generated index header is invalid."
+                  "Generated release index header "
+                  "is invalid"
               )
 
           records = {}
@@ -552,7 +504,7 @@ jobs:
               if len(fields) != 11:
                   fail(
                       f"Index line {line_number} has "
-                      f"{len(fields)} fields instead of 11."
+                      f"{len(fields)} fields instead of 11"
                   )
 
               (
@@ -569,26 +521,11 @@ jobs:
                   changelog,
               ) = fields
 
-              key = name.casefold()
-
-              if key in records:
-                  fail(
-                      "Duplicate NAME in generated index: "
-                      f"{name}"
-                  )
-
-              records[key] = fields
-
-              path = by_name.get(key)
+              path = by_name.get(
+                  name.casefold()
+              )
 
               if path is None:
-                  if (
-                      item_type == "MANAGER"
-                      and key == manager_name.casefold()
-                      and preserved_manager_row is not None
-                  ):
-                      continue
-
                   fail(
                       f"Indexed file is unavailable: {name}"
                   )
@@ -621,6 +558,16 @@ jobs:
                       f"Size mismatch for {name}"
                   )
 
+              key = name.casefold()
+
+              if key in records:
+                  fail(
+                      "Duplicate NAME in generated "
+                      f"index: {name}"
+                  )
+
+              records[key] = fields
+
           for version, required_name in (
               required_releases.items()
           ):
@@ -648,7 +595,7 @@ jobs:
 
           print(
               f"Generated {index_name} "
-              f"with {len(rows)} records."
+              f"with {len(rows)} records"
           )
 
           for version in ("1.0", "1.1"):
@@ -668,29 +615,29 @@ jobs:
               )
 
           print(
-              "Repository index generation and "
-              "verification completed successfully."
+              "Release index verification "
+              "completed successfully"
           )
           PY
 
-      - name: Display generated index
+      - name: Display generated release index
         shell: bash
         env:
-          INDEX_FILE: NLH Repository Index.txt
+          INDEX_FILE: NLH Mod Manager Release Index.txt
         run: |
           set -euo pipefail
 
           cat -- "$INDEX_FILE"
 
-      - name: Commit updated index
+      - name: Commit updated release index
         shell: bash
         env:
-          INDEX_FILE: NLH Repository Index.txt
+          INDEX_FILE: NLH Mod Manager Release Index.txt
         run: |
           set -euo pipefail
 
           if git diff --quiet -- "$INDEX_FILE"; then
-            echo "Repository index is already current."
+            echo "Release index is already current."
             exit 0
           fi
 
@@ -705,7 +652,7 @@ jobs:
           git add -- "$INDEX_FILE"
 
           git commit \
-            -m "Update NLH repository index"
+            -m "Update NLH Mod Manager release index"
 
           git push \
             origin \
