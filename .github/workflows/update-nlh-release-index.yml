@@ -1,4 +1,4 @@
-	name: Update NLH Mod Manager Release Index
+name: Update NLH Mod Manager Release Index
 
 on:
   push:
@@ -40,18 +40,22 @@ jobs:
           import re
           import subprocess
           import zipfile
+
           from pathlib import Path, PurePosixPath
           from urllib.parse import quote, unquote
+
 
           root = Path.cwd()
           index_name = os.environ["INDEX_FILE"]
           index_path = root / index_name
 
           signature = "NLH-REPOSITORY-INDEX|1"
+
           header = (
               "#TYPE|NAME|RAW_PATH|GIT_BLOB_SHA|SHA256|SIZE|VERSION|"
               "CHARACTER|BASE_NAME|PRIVATE_METADATA|CHANGELOG"
           )
+
           field_count = 11
 
           manager_name = "NLH Mod Manager.vbs"
@@ -86,6 +90,7 @@ jobs:
               re.IGNORECASE,
           )
 
+
           def fail(message):
               print(
                   f"::error title=NLH release index failure::{message}",
@@ -93,17 +98,20 @@ jobs:
               )
               raise SystemExit(1)
 
+
           def notice(message):
               print(
                   f"::notice title=NLH release index::{message}",
                   flush=True,
               )
 
+
           def version_key(version):
               return tuple(
                   int(part)
                   for part in version.split(".")
               )
+
 
           def sha256_file(path):
               digest = hashlib.sha256()
@@ -116,6 +124,7 @@ jobs:
                       digest.update(block)
 
               return digest.hexdigest().lower()
+
 
           def git_blob_sha(path):
               relative = path.relative_to(root).as_posix()
@@ -145,6 +154,7 @@ jobs:
 
               return value
 
+
           def raw_path(path):
               relative = path.relative_to(root).as_posix()
 
@@ -152,6 +162,7 @@ jobs:
                   quote(part, safe="")
                   for part in relative.split("/")
               )
+
 
           def clean_field(value):
               value = str(value)
@@ -168,6 +179,7 @@ jobs:
 
               return value
 
+
           def make_row(
               item_type,
               path,
@@ -176,29 +188,35 @@ jobs:
               base_name="",
               private_metadata="",
               changelog="",
+              name_override=None,
               sha256_override=None,
               size_override=None,
-              name_override=None,
           ):
+              name_value = (
+                  path.name
+                  if name_override is None
+                  else name_override
+              )
+
+              sha256_value = (
+                  sha256_file(path)
+                  if sha256_override is None
+                  else sha256_override
+              )
+
+              size_value = (
+                  str(path.stat().st_size)
+                  if size_override is None
+                  else str(size_override)
+              )
+
               fields = [
                   item_type,
-                  (
-                      path.name
-                      if name_override is None
-                      else name_override
-                  ),
+                  name_value,
                   raw_path(path),
                   git_blob_sha(path),
-                  (
-                      sha256_file(path)
-                      if sha256_override is None
-                      else sha256_override
-                  ),
-                  (
-                      str(path.stat().st_size)
-                      if size_override is None
-                      else str(size_override)
-                  ),
+                  sha256_value,
+                  size_value,
                   version,
                   character,
                   base_name,
@@ -215,6 +233,7 @@ jobs:
                   clean_field(field)
                   for field in fields
               )
+
 
           def normalize_internal_path(value):
               value = value.replace("\\", "/")
@@ -239,6 +258,7 @@ jobs:
 
               return normalized
 
+
           def read_fbmod_members(zip_path):
               members = []
               seen_paths = set()
@@ -260,10 +280,8 @@ jobs:
                           if info.is_dir():
                               continue
 
-                          internal_path = (
-                              normalize_internal_path(
-                                  info.filename
-                              )
+                          internal_path = normalize_internal_path(
+                              info.filename
                           )
 
                           if not internal_path.casefold().endswith(
@@ -335,6 +353,7 @@ jobs:
                   )
 
               return members
+
 
           repository_files = sorted(
               (
@@ -449,6 +468,7 @@ jobs:
 
               ignored_files.append(path)
 
+
           releases_by_version = {}
 
           for path, version in releases:
@@ -461,6 +481,7 @@ jobs:
                   )
 
               releases_by_version[version] = path
+
 
           release_private_by_version = {}
 
@@ -475,6 +496,7 @@ jobs:
 
               release_private_by_version[version] = path
 
+
           if not releases:
               fail(
                   "No manager release files were found. "
@@ -482,6 +504,7 @@ jobs:
                   "NLH Mod Manager Public Release "
                   "V<version>.vbs is required."
               )
+
 
           rows = []
           expected_mod_files = {}
@@ -494,6 +517,7 @@ jobs:
                       base_name=manager_file.stem,
                   )
               )
+
 
           for path, version in sorted(
               releases,
@@ -521,6 +545,7 @@ jobs:
                   )
               )
 
+
           for path, version in sorted(
               release_private_files,
               key=lambda item: version_key(item[1]),
@@ -536,6 +561,7 @@ jobs:
                   )
               )
 
+
           for path in sorted(
               profiles,
               key=lambda item: item.name.casefold(),
@@ -548,6 +574,7 @@ jobs:
                   )
               )
 
+
           for path in sorted(
               icons,
               key=lambda item: item.name.casefold(),
@@ -559,6 +586,7 @@ jobs:
                       base_name=path.stem,
                   )
               )
+
 
           mod_base_names = set()
 
@@ -628,8 +656,12 @@ jobs:
                           version=version,
                           character=character,
                           base_name=base_name,
+                          private_metadata="",
                           changelog=member[
                               "internal_path"
+                          ],
+                          name_override=member[
+                              "name"
                           ],
                           sha256_override=member[
                               "sha256"
@@ -637,11 +669,9 @@ jobs:
                           size_override=member[
                               "size"
                           ],
-                          name_override=member[
-                              "name"
-                          ],
                       )
                   )
+
 
           release_private_names = {
               path.name.casefold()
@@ -668,6 +698,7 @@ jobs:
                   )
               )
 
+
           output_text = (
               "\n".join(
                   [
@@ -684,6 +715,7 @@ jobs:
               encoding="utf-8",
               newline="\n",
           )
+
 
           final_lines = index_path.read_text(
               encoding="utf-8"
@@ -706,6 +738,7 @@ jobs:
                   "is invalid."
               )
 
+
           indexed_repository_names = set()
           indexed_repository_paths = set()
           indexed_mod_file_keys = set()
@@ -713,6 +746,7 @@ jobs:
           verified_release_versions = set()
           verified_private_versions = set()
           verified_mod_files = {}
+
 
           for line_number, line in enumerate(
               final_lines[2:],
@@ -751,7 +785,7 @@ jobs:
 
               if not path.is_file():
                   fail(
-                      "Indexed file does not exist: "
+                      "Indexed parent file does not exist: "
                       f"{decoded_relative}"
                   )
 
@@ -781,6 +815,7 @@ jobs:
                       f"Invalid size on line "
                       f"{line_number}."
                   )
+
 
               if item_type == "MOD_FILE":
                   parent_match = mod_pattern.fullmatch(
@@ -944,6 +979,7 @@ jobs:
 
                   continue
 
+
               if path.name != name:
                   fail(
                       "NAME and RAW_PATH disagree "
@@ -968,17 +1004,19 @@ jobs:
               if name_key in indexed_repository_names:
                   fail(
                       "Duplicate repository NAME in "
-                      f"index: {name}"
+                      f"the regenerated index: {name}"
                   )
 
               if path_key in indexed_repository_paths:
                   fail(
                       "Duplicate repository RAW_PATH in "
-                      f"index: {stored_raw_path}"
+                      f"the regenerated index: "
+                      f"{stored_raw_path}"
                   )
 
               indexed_repository_names.add(name_key)
               indexed_repository_paths.add(path_key)
+
 
               if item_type == "RELEASE":
                   match = release_pattern.fullmatch(
@@ -1023,6 +1061,7 @@ jobs:
                       detected_version
                   )
 
+
               elif item_type == "RELEASE_PRIVATE":
                   match = (
                       release_private_pattern.fullmatch(
@@ -1048,6 +1087,7 @@ jobs:
                   verified_private_versions.add(
                       detected_version
                   )
+
 
               elif item_type == "MOD":
                   match = mod_pattern.fullmatch(
@@ -1119,6 +1159,7 @@ jobs:
                           f"CHANGELOG mismatch for {name}."
                       )
 
+
           expected_release_versions = set(
               releases_by_version
           )
@@ -1146,6 +1187,7 @@ jobs:
                   "repository."
               )
 
+
           for parent_key, members in (
               expected_mod_files.items()
           ):
@@ -1166,6 +1208,7 @@ jobs:
                       f"{parent_key}."
                   )
 
+
           if (
               set(verified_mod_files)
               != set(expected_mod_files)
@@ -1175,6 +1218,7 @@ jobs:
                   "does not match the repository's "
                   "mod ZIP set."
               )
+
 
           indexed_types = {}
 
@@ -1189,6 +1233,7 @@ jobs:
                   + 1
               )
 
+
           print(
               f"Regenerated {index_name} from the "
               "current repository with "
@@ -1200,6 +1245,7 @@ jobs:
                   f"{item_type}: "
                   f"{indexed_types[item_type]}"
               )
+
 
           for version in sorted(
               releases_by_version,
@@ -1213,6 +1259,7 @@ jobs:
                   f"sha256={sha256_file(path)} "
                   f"blob={git_blob_sha(path)}"
               )
+
 
           for path, version, character in sorted(
               mods,
@@ -1234,6 +1281,7 @@ jobs:
                   ".fbmod component(s)"
               )
 
+
           if ignored_files:
               print(
                   "Files intentionally not indexed:"
@@ -1242,8 +1290,9 @@ jobs:
               for path in ignored_files:
                   print(f"- {path.name}")
 
+
           notice(
-              "The Version 1 release index and "
+              "The Version 1 release index and all "
               "contained MOD_FILE rows were rebuilt "
               "and verified."
           )
