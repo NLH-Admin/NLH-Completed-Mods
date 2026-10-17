@@ -1,7 +1,8 @@
 NLH-REPOSITORY-INDEX|1
 #TYPE|NAME|RAW_PATH|GIT_BLOB_SHA|SHA256|SIZE|VERSION|CHARACTER|BASE_NAME|PRIVATE_METADATA|CHANGELOG
-RELEASE|NLH Mod Manager Public Release V1.0.vbs|NLH%20Mod%20Manager%20Public%20Release%20V1.0.vbs|0df77ebce51a46a886d647a4a74cd01f958ae54a|e1059488f52bda10192ce9c02aad858e90f657af83be6673835fa128016d0776|79211|1.0||NLH Mod Manager Public Release V1.0||
-RELEASE|NLH Mod Manager Public Release V1.1.vbs|NLH%20Mod%20Manager%20Public%20Release%20V1.1.vbs|53a3867c93cc516f8d058ae0b1f4666d96b878f3|2a561fe798751ae3e64bbc3497826f7f7a9b49d56aea3a974cffb1f2d6c4e458|83499|1.1||NLH Mod Manager Public Release V1.1|NLH Mod Manager Public Release V1.1_Private.txt|
+MANAGER|NLH Mod Manager.vbs|NLH%20Mod%20Manager.vbs|957e07c71242145216220ae8144963f24022784a|8924fc172dada5760a28048be4ef9345ea64ba4f89828b9894a644a87c1cf4d8|22364|||NLH Mod Manager||
+RELEASE|NLH Mod Manager Public Release V1.0.vbs|NLH%20Mod%20Manager%20Public%20Release%20V1.0.vbs|5649a42f041868e3d724410d877ffecdbf8c4954|d1644e3281135a3d92322ba65907ff308d3b4861bb3c868fa85ac27a348fbb05|79507|1.0||NLH Mod Manager Public Release V1.0||
+RELEASE|NLH Mod Manager Public Release V1.1.vbs|NLH%20Mod%20Manager%20Public%20Release%20V1.1.vbs|edaf8d66d64e9738161486522ff8d4b6f3dbbc02|b0f4b34872dd4325624022493e4e3de8f4b57cfd24b9b33a81ca4d22c00ccd32|83731|1.1||NLH Mod Manager Public Release V1.1|NLH Mod Manager Public Release V1.1_Private.txt|
 RELEASE_PRIVATE|NLH Mod Manager Public Release V1.1_Private.txt|NLH%20Mod%20Manager%20Public%20Release%20V1.1_Private.txt|d5683d16f56180f36bfb6383b0518a699d4a5f7e|1c345f041113a1e3754b11b84ca3a516a1d61584be7456b4c34544a78ffafa3f|72|1.1||NLH Mod Manager Public Release V1.1||
 SQUAD_PROFILES|NLH Mod Manager Squad Profiles.txt|NLH%20Mod%20Manager%20Squad%20Profiles.txt|86f11506bd2d96802ae5bcefb9f9b97b783f970b|ed1f05432ac74f89c89ce633ec27832c7969e81914bb437c72f226e038f2a687|412|||NLH Mod Manager Squad Profiles||
 ICON|NLH_MM.ico|NLH_MM.ico|97d4b0cb7e0374d8f9fda7fd73b7c8433a5d232c|753f46df39a2e00a277208eda4f8139fc7d2767b256273125afbd8dfd87949b8|115507|||NLH_MM||
