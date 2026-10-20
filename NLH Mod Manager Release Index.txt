@@ -1,7 +1,8 @@
 NLH-REPOSITORY-INDEX|1
 #TYPE|NAME|RAW_PATH|GIT_BLOB_SHA|SHA256|SIZE|VERSION|CHARACTER|BASE_NAME|PRIVATE_METADATA|CHANGELOG
 MANAGER|NLH Mod Manager.vbs|NLH%20Mod%20Manager.vbs|b21f7f7a05985c32ae7eeee8b74de747935e4bde|a8f80f2516b089a81b01c30479855d1da0be54dcf8476e6a6f405c2cce9a111c|22162|||NLH Mod Manager||
-RELEASE|NLH Mod Manager Public Release V1.0.vbs|NLH%20Mod%20Manager%20Public%20Release%20V1.0.vbs|db340f444b227423c4bf5cc8a874df8ada756b4e|ab6d0e6eb9824bafc16f187744e4b945c0f37becb736fe8f909296a1c55bbdad|87077|1.0||NLH Mod Manager Public Release V1.0||
+RELEASE|NLH Mod Manager Public Release V1.0.vbs|NLH%20Mod%20Manager%20Public%20Release%20V1.0.vbs|171f2941fd94d53d3372380a7f21504dca255ca6|eb397bd715534db9c1aa6259d8a4aa3ed86605cdf198d429f89e10e78a019438|87249|1.0||NLH Mod Manager Public Release V1.0||
+RELEASE|NLH Mod Manager Public Release V1.1.vbs|NLH%20Mod%20Manager%20Public%20Release%20V1.1.vbs|f34dda30984952525daa6c0f11a7e6114bee5fdf|8e29bd678d77c58f3fb80a95b1647352ad2ffd9007e95c47ea7175bdeb0ee1e4|91557|1.1||NLH Mod Manager Public Release V1.1|NLH Mod Manager Public Release V1.1_Private.txt|
 RELEASE_PRIVATE|NLH Mod Manager Public Release V1.1_Private.txt|NLH%20Mod%20Manager%20Public%20Release%20V1.1_Private.txt|d5683d16f56180f36bfb6383b0518a699d4a5f7e|1c345f041113a1e3754b11b84ca3a516a1d61584be7456b4c34544a78ffafa3f|72|1.1||NLH Mod Manager Public Release V1.1||
 SQUAD_PROFILES|NLH Mod Manager Squad Profiles.txt|NLH%20Mod%20Manager%20Squad%20Profiles.txt|86f11506bd2d96802ae5bcefb9f9b97b783f970b|ed1f05432ac74f89c89ce633ec27832c7969e81914bb437c72f226e038f2a687|412|||NLH Mod Manager Squad Profiles||
 ICON|NLH_MM.ico|NLH_MM.ico|fc3b7db22162ce1911cf7988266360121f52d056|a37f1225f73b50ea7a918a01bee8c8bbde889af1e91d328e5f96e24a8f5c0c3b|79051|||NLH_MM||
