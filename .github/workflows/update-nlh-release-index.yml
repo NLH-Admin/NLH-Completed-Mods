@@ -62,22 +62,44 @@ jobs:
               re.IGNORECASE,
           )
           manager_pattern = re.compile(r"^NLH Mod Manager\.vbs$", re.IGNORECASE)
-          profiles_pattern = re.compile(r"^NLH Mod Manager Squad Profiles\.txt$", re.IGNORECASE)
+          profiles_pattern = re.compile(
+              r"^NLH Mod Manager Squad Profiles\.txt$",
+              re.IGNORECASE,
+          )
           mod_pattern = re.compile(
               r"^(?P<character>.+)_(?P<version>\d+(?:\.\d+)*)\.zip$",
               re.IGNORECASE,
           )
-          private_pattern = re.compile(r"^(?P<base>.+)_Private\.txt$", re.IGNORECASE)
-          changelog_pattern = re.compile(r"^(?P<base>.+)_Changelog\.txt$", re.IGNORECASE)
+          private_pattern = re.compile(
+              r"^(?P<base>.+)_Private\.txt$",
+              re.IGNORECASE,
+          )
+          changelog_pattern = re.compile(
+              r"^(?P<base>.+)_Changelog\.txt$",
+              re.IGNORECASE,
+          )
 
-          image_extensions = {".gif", ".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+          image_extensions = {
+              ".gif",
+              ".png",
+              ".jpg",
+              ".jpeg",
+              ".webp",
+              ".bmp",
+          }
 
           def fail(message):
-              print(f"::error title=NLH release index failure::{message}", flush=True)
+              print(
+                  f"::error title=NLH release index failure::{message}",
+                  flush=True,
+              )
               raise SystemExit(1)
 
           def notice(message):
-              print(f"::notice title=NLH release index::{message}", flush=True)
+              print(
+                  f"::notice title=NLH release index::{message}",
+                  flush=True,
+              )
 
           def version_key(version):
               return tuple(int(part) for part in version.split("."))
@@ -85,7 +107,10 @@ jobs:
           def sha256_file(path):
               digest = hashlib.sha256()
               with path.open("rb") as stream:
-                  for block in iter(lambda: stream.read(1024 * 1024), b""):
+                  for block in iter(
+                      lambda: stream.read(1024 * 1024),
+                      b"",
+                  ):
                       digest.update(block)
               return digest.hexdigest().lower()
 
@@ -105,24 +130,39 @@ jobs:
 
           def raw_path(path):
               relative = path.relative_to(root).as_posix()
-              return "/".join(quote(part, safe="") for part in relative.split("/"))
+              return "/".join(
+                  quote(part, safe="")
+                  for part in relative.split("/")
+              )
 
           def clean_field(value):
               value = str(value)
               if "|" in value or "\r" in value or "\n" in value:
-                  fail(f"Unsupported character in index field: {value!r}")
+                  fail(
+                      f"Unsupported character in index field: {value!r}"
+                  )
               return value
 
           def encode_private_metadata(path):
-              return "B64:" + base64.b64encode(path.read_bytes()).decode("ascii")
+              return (
+                  "B64:"
+                  + base64.b64encode(path.read_bytes()).decode("ascii")
+              )
 
           def decode_private_metadata(value, name):
               if not value.startswith("B64:") or not value[4:]:
-                  fail(f"Embedded private metadata is invalid for {name}.")
+                  fail(
+                      f"Embedded private metadata is invalid for {name}."
+                  )
               try:
-                  return base64.b64decode(value[4:], validate=True)
+                  return base64.b64decode(
+                      value[4:],
+                      validate=True,
+                  )
               except Exception:
-                  fail(f"Embedded private metadata is invalid for {name}.")
+                  fail(
+                      f"Embedded private metadata is invalid for {name}."
+                  )
 
           def make_row(
               item_type,
@@ -141,8 +181,16 @@ jobs:
                   path.name if name_override is None else name_override,
                   raw_path(path),
                   git_blob_sha(path),
-                  sha256_file(path) if sha256_override is None else sha256_override,
-                  str(path.stat().st_size) if size_override is None else str(size_override),
+                  (
+                      sha256_file(path)
+                      if sha256_override is None
+                      else sha256_override
+                  ),
+                  (
+                      str(path.stat().st_size)
+                      if size_override is None
+                      else str(size_override)
+                  ),
                   version,
                   character,
                   base_name,
@@ -151,7 +199,10 @@ jobs:
               ]
               if len(fields) != field_count:
                   fail("Internal index row field-count error.")
-              return "|".join(clean_field(field) for field in fields)
+              return "|".join(
+                  clean_field(field)
+                  for field in fields
+              )
 
           def normalize_internal_path(value):
               value = value.replace("\\", "/")
@@ -166,65 +217,114 @@ jobs:
           def read_fbmod_members(zip_path):
               members = []
               seen = set()
+
               try:
                   with zipfile.ZipFile(zip_path, "r") as archive:
                       bad = archive.testzip()
                       if bad is not None:
-                          fail(f"ZIP integrity failure for {zip_path.name}: {bad}")
+                          fail(
+                              f"ZIP integrity failure for "
+                              f"{zip_path.name}: {bad}"
+                          )
+
                       for info in archive.infolist():
                           if info.is_dir():
                               continue
-                          internal = normalize_internal_path(info.filename)
+
+                          internal = normalize_internal_path(
+                              info.filename
+                          )
                           if not internal.casefold().endswith(".fbmod"):
                               continue
+
                           key = internal.casefold()
                           if key in seen:
-                              fail(f"Duplicate .fbmod path in {zip_path.name}: {internal}")
+                              fail(
+                                  f"Duplicate .fbmod path in "
+                                  f"{zip_path.name}: {internal}"
+                              )
                           seen.add(key)
+
                           digest = hashlib.sha256()
                           size = 0
+
                           with archive.open(info, "r") as stream:
-                              for block in iter(lambda: stream.read(1024 * 1024), b""):
+                              for block in iter(
+                                  lambda: stream.read(1024 * 1024),
+                                  b"",
+                              ):
                                   digest.update(block)
                                   size += len(block)
+
                           if size != info.file_size:
-                              fail(f"Size mismatch for {internal} in {zip_path.name}")
+                              fail(
+                                  f"Size mismatch for {internal} "
+                                  f"in {zip_path.name}"
+                              )
+
                           members.append({
                               "name": PurePosixPath(internal).name,
                               "internal_path": internal,
                               "sha256": digest.hexdigest().lower(),
                               "size": size,
                           })
+
               except zipfile.BadZipFile:
                   fail(f"Invalid ZIP file: {zip_path.name}")
-              members.sort(key=lambda item: item["internal_path"].casefold())
+
+              members.sort(
+                  key=lambda item: item["internal_path"].casefold()
+              )
+
               if not members:
-                  fail(f"Mod ZIP contains no .fbmod files: {zip_path.name}")
+                  fail(
+                      f"Mod ZIP contains no .fbmod files: "
+                      f"{zip_path.name}"
+                  )
+
               return members
 
           def generic_type(path):
               suffix = path.suffix.casefold()
+
               if suffix == ".ico":
                   return "ICON"
+
+              if suffix == ".gif":
+                  return "GIF"
+
               if suffix in image_extensions:
                   return "IMAGE_ASSET"
+
               if suffix == ".vbs":
                   return "SCRIPT"
+
               if suffix == ".txt":
                   return "TEXT_ASSET"
+
               if suffix == ".json":
                   return "DATA_ASSET"
+
               return "FILE"
 
           repository_files = sorted(
-              (path for path in root.iterdir() if path.is_file() and path.name != index_name),
+              (
+                  path
+                  for path in root.iterdir()
+                  if path.is_file() and path.name != index_name
+              ),
               key=lambda path: path.name.casefold(),
           )
+
           files_by_name = {}
+
           for path in repository_files:
               key = path.name.casefold()
               if key in files_by_name:
-                  fail(f"Duplicate case-insensitive filename: {path.name}")
+                  fail(
+                      f"Duplicate case-insensitive filename: "
+                      f"{path.name}"
+                  )
               files_by_name[key] = path
 
           managers = []
@@ -238,32 +338,52 @@ jobs:
 
           for path in repository_files:
               name = path.name
+
               if manager_pattern.fullmatch(name):
                   managers.append(path)
                   continue
+
               match = release_pattern.fullmatch(name)
               if match:
-                  releases.append((path, match.group("version")))
+                  releases.append(
+                      (path, match.group("version"))
+                  )
                   continue
+
               match = release_private_pattern.fullmatch(name)
               if match:
-                  release_private_files.append((path, match.group("version")))
+                  release_private_files.append(
+                      (path, match.group("version"))
+                  )
                   continue
+
               if profiles_pattern.fullmatch(name):
                   profiles.append(path)
                   continue
+
               match = mod_pattern.fullmatch(name)
               if match:
-                  mods.append((path, match.group("version"), match.group("character")))
+                  mods.append((
+                      path,
+                      match.group("version"),
+                      match.group("character"),
+                  ))
                   continue
+
               match = private_pattern.fullmatch(name)
               if match:
-                  private_files.append((path, match.group("base")))
+                  private_files.append(
+                      (path, match.group("base"))
+                  )
                   continue
+
               match = changelog_pattern.fullmatch(name)
               if match:
-                  changelog_files.append((path, match.group("base")))
+                  changelog_files.append(
+                      (path, match.group("base"))
+                  )
                   continue
+
               generic_files.append(path)
 
           if not releases:
@@ -273,18 +393,30 @@ jobs:
           expected_mod_files = {}
 
           for path in managers:
-              rows.append(make_row("MANAGER", path, base_name=path.stem))
+              rows.append(
+                  make_row(
+                      "MANAGER",
+                      path,
+                      base_name=path.stem,
+                  )
+              )
 
-          for path, version in sorted(releases, key=lambda item: version_key(item[1])):
+          for path, version in sorted(
+              releases,
+              key=lambda item: version_key(item[1]),
+          ):
               base_name = path.stem
               private_name = f"{base_name}_Private.txt"
+
               rows.append(make_row(
                   "RELEASE",
                   path,
                   version=version,
                   base_name=base_name,
                   private_metadata=(
-                      private_name if private_name.casefold() in files_by_name else ""
+                      private_name
+                      if private_name.casefold() in files_by_name
+                      else ""
                   ),
               ))
 
@@ -301,9 +433,14 @@ jobs:
               ))
 
           for path in profiles:
-              rows.append(make_row("SQUAD_PROFILES", path, base_name=path.stem))
+              rows.append(make_row(
+                  "SQUAD_PROFILES",
+                  path,
+                  base_name=path.stem,
+              ))
 
           mod_base_names = set()
+
           for path, version, character in sorted(
               mods,
               key=lambda item: (
@@ -313,11 +450,15 @@ jobs:
               ),
           ):
               base_name = path.stem
+
               if base_name.casefold() in mod_base_names:
                   fail(f"Duplicate mod base name: {base_name}")
+
               mod_base_names.add(base_name.casefold())
+
               private_name = f"{base_name}_Private.txt"
               changelog_name = f"{base_name}_Changelog.txt"
+
               rows.append(make_row(
                   "MOD",
                   path,
@@ -325,14 +466,20 @@ jobs:
                   character=character,
                   base_name=base_name,
                   private_metadata=(
-                      private_name if private_name.casefold() in files_by_name else ""
+                      private_name
+                      if private_name.casefold() in files_by_name
+                      else ""
                   ),
                   changelog=(
-                      changelog_name if changelog_name.casefold() in files_by_name else ""
+                      changelog_name
+                      if changelog_name.casefold() in files_by_name
+                      else ""
                   ),
               ))
+
               members = read_fbmod_members(path)
               expected_mod_files[path.name.casefold()] = members
+
               for member in members:
                   rows.append(make_row(
                       "#MOD_FILE",
@@ -347,14 +494,17 @@ jobs:
                   ))
 
           release_private_names = {
-              path.name.casefold() for path, unused in release_private_files
+              path.name.casefold()
+              for path, unused in release_private_files
           }
+
           for path, base_name in sorted(
               private_files,
               key=lambda item: item[0].name.casefold(),
           ):
               if path.name.casefold() in release_private_names:
                   continue
+
               rows.append(make_row(
                   "PRIVATE",
                   path,
@@ -366,14 +516,37 @@ jobs:
               changelog_files,
               key=lambda item: item[0].name.casefold(),
           ):
-              rows.append(make_row("CHANGELOG", path, base_name=base_name))
+              rows.append(make_row(
+                  "CHANGELOG",
+                  path,
+                  base_name=base_name,
+              ))
 
-          for path in sorted(generic_files, key=lambda item: item.name.casefold()):
-              rows.append(make_row(generic_type(path), path, base_name=path.stem))
+          for path in sorted(
+              generic_files,
+              key=lambda item: item.name.casefold(),
+          ):
+              rows.append(make_row(
+                  generic_type(path),
+                  path,
+                  base_name=path.stem,
+              ))
 
-          output_text = "\n".join([signature, header, *rows]) + "\n"
-          index_path.write_text(output_text, encoding="utf-8", newline="\n")
-          final_lines = index_path.read_text(encoding="utf-8").splitlines()
+          output_text = "\n".join([
+              signature,
+              header,
+              *rows,
+          ]) + "\n"
+
+          index_path.write_text(
+              output_text,
+              encoding="utf-8",
+              newline="\n",
+          )
+
+          final_lines = index_path.read_text(
+              encoding="utf-8"
+          ).splitlines()
 
           if final_lines[:2] != [signature, header]:
               fail("The regenerated index header is invalid.")
@@ -384,109 +557,238 @@ jobs:
           mod_file_paths = {}
           embedded_private = set()
 
-          for line_number, line in enumerate(final_lines[2:], start=3):
+          for line_number, line in enumerate(
+              final_lines[2:],
+              start=3,
+          ):
               fields = line.split("|")
+
               if len(fields) != field_count:
-                  fail(f"Index line {line_number} has the wrong field count.")
+                  fail(
+                      f"Index line {line_number} has "
+                      f"the wrong field count."
+                  )
+
               (
-                  item_type, name, stored_raw_path, stored_blob_sha, stored_sha256,
-                  stored_size, version, character, base_name, private_metadata,
+                  item_type,
+                  name,
+                  stored_raw_path,
+                  stored_blob_sha,
+                  stored_sha256,
+                  stored_size,
+                  version,
+                  character,
+                  base_name,
+                  private_metadata,
                   changelog,
               ) = fields
-              decoded = "/".join(unquote(part) for part in stored_raw_path.split("/"))
+
+              decoded = "/".join(
+                  unquote(part)
+                  for part in stored_raw_path.split("/")
+              )
               path = root / decoded
+
               if not path.is_file():
-                  fail(f"Indexed file does not exist: {decoded}")
+                  fail(
+                      f"Indexed file does not exist: {decoded}"
+                  )
+
               if stored_raw_path != raw_path(path):
-                  fail(f"RAW_PATH mismatch on line {line_number}")
+                  fail(
+                      f"RAW_PATH mismatch on line {line_number}"
+                  )
+
               if stored_blob_sha != git_blob_sha(path):
-                  fail(f"Git blob SHA mismatch on line {line_number}")
-              if not re.fullmatch(r"[0-9a-f]{64}", stored_sha256):
-                  fail(f"Invalid SHA-256 on line {line_number}")
+                  fail(
+                      f"Git blob SHA mismatch on line {line_number}"
+                  )
+
+              if not re.fullmatch(
+                  r"[0-9a-f]{64}",
+                  stored_sha256,
+              ):
+                  fail(
+                      f"Invalid SHA-256 on line {line_number}"
+                  )
+
               if not stored_size.isdigit():
-                  fail(f"Invalid size on line {line_number}")
+                  fail(
+                      f"Invalid size on line {line_number}"
+                  )
 
               if item_type == "#MOD_FILE":
                   internal = normalize_internal_path(changelog)
-                  key = (stored_raw_path.casefold(), internal.casefold())
+                  key = (
+                      stored_raw_path.casefold(),
+                      internal.casefold(),
+                  )
+
                   if key in mod_file_keys:
-                      fail(f"Duplicate MOD_FILE record on line {line_number}")
+                      fail(
+                          f"Duplicate MOD_FILE record on "
+                          f"line {line_number}"
+                      )
+
                   mod_file_keys.add(key)
                   found = None
+
                   with zipfile.ZipFile(path, "r") as archive:
                       for info in archive.infolist():
                           if info.is_dir():
                               continue
-                          candidate = normalize_internal_path(info.filename)
+
+                          candidate = normalize_internal_path(
+                              info.filename
+                          )
+
                           if candidate.casefold() == internal.casefold():
                               if found is not None:
-                                  fail(f"Duplicate ZIP member: {internal}")
+                                  fail(
+                                      f"Duplicate ZIP member: {internal}"
+                                  )
                               found = info
+
                       if found is None:
-                          fail(f"Missing MOD_FILE member: {path.name} -> {internal}")
+                          fail(
+                              f"Missing MOD_FILE member: "
+                              f"{path.name} -> {internal}"
+                          )
+
                       digest = hashlib.sha256()
                       actual_size = 0
+
                       with archive.open(found, "r") as stream:
-                          for block in iter(lambda: stream.read(1024 * 1024), b""):
+                          for block in iter(
+                              lambda: stream.read(1024 * 1024),
+                              b"",
+                          ):
                               digest.update(block)
                               actual_size += len(block)
+
                   if digest.hexdigest().lower() != stored_sha256:
-                      fail(f"MOD_FILE SHA-256 mismatch: {path.name} -> {internal}")
+                      fail(
+                          f"MOD_FILE SHA-256 mismatch: "
+                          f"{path.name} -> {internal}"
+                      )
+
                   if str(actual_size) != stored_size:
-                      fail(f"MOD_FILE size mismatch: {path.name} -> {internal}")
-                  mod_file_paths.setdefault(path.name.casefold(), set()).add(
-                      internal.casefold()
-                  )
+                      fail(
+                          f"MOD_FILE size mismatch: "
+                          f"{path.name} -> {internal}"
+                      )
+
+                  mod_file_paths.setdefault(
+                      path.name.casefold(),
+                      set(),
+                  ).add(internal.casefold())
+
                   continue
 
               if path.name != name:
-                  fail(f"NAME and RAW_PATH disagree on line {line_number}")
+                  fail(
+                      f"NAME and RAW_PATH disagree on "
+                      f"line {line_number}"
+                  )
+
               if stored_sha256 != sha256_file(path):
                   fail(f"SHA-256 mismatch for {name}")
+
               if stored_size != str(path.stat().st_size):
                   fail(f"Size mismatch for {name}")
-              if name.casefold() in repository_names:
-                  fail(f"Duplicate repository NAME: {name}")
-              if stored_raw_path.casefold() in repository_paths:
-                  fail(f"Duplicate repository RAW_PATH: {stored_raw_path}")
-              repository_names.add(name.casefold())
-              repository_paths.add(stored_raw_path.casefold())
 
-              if item_type in {"PRIVATE", "RELEASE_PRIVATE"}:
-                  if decode_private_metadata(changelog, name) != path.read_bytes():
-                      fail(f"Embedded private metadata mismatch for {name}")
+              if name.casefold() in repository_names:
+                  fail(
+                      f"Duplicate repository NAME: {name}"
+                  )
+
+              if stored_raw_path.casefold() in repository_paths:
+                  fail(
+                      f"Duplicate repository RAW_PATH: "
+                      f"{stored_raw_path}"
+                  )
+
+              repository_names.add(name.casefold())
+              repository_paths.add(
+                  stored_raw_path.casefold()
+              )
+
+              if item_type in {
+                  "PRIVATE",
+                  "RELEASE_PRIVATE",
+              }:
+                  if (
+                      decode_private_metadata(changelog, name)
+                      != path.read_bytes()
+                  ):
+                      fail(
+                          f"Embedded private metadata mismatch "
+                          f"for {name}"
+                      )
+
                   embedded_private.add(name.casefold())
 
           for parent, members in expected_mod_files.items():
-              expected = {item["internal_path"].casefold() for item in members}
-              if mod_file_paths.get(parent, set()) != expected:
-                  fail(f"MOD_FILE set mismatch for {parent}")
+              expected = {
+                  item["internal_path"].casefold()
+                  for item in members
+              }
 
-          expected_repository_names = {path.name.casefold() for path in repository_files}
+              if mod_file_paths.get(parent, set()) != expected:
+                  fail(
+                      f"MOD_FILE set mismatch for {parent}"
+                  )
+
+          expected_repository_names = {
+              path.name.casefold()
+              for path in repository_files
+          }
+
           if repository_names != expected_repository_names:
-              missing = sorted(expected_repository_names - repository_names)
-              extra = sorted(repository_names - expected_repository_names)
-              fail(f"Repository-file coverage mismatch. Missing={missing}; extra={extra}")
+              missing = sorted(
+                  expected_repository_names - repository_names
+              )
+              extra = sorted(
+                  repository_names - expected_repository_names
+              )
+              fail(
+                  f"Repository-file coverage mismatch. "
+                  f"Missing={missing}; extra={extra}"
+              )
 
           expected_private_names = {
-              path.name.casefold() for path, unused in release_private_files
+              path.name.casefold()
+              for path, unused in release_private_files
           }
           expected_private_names.update(
-              path.name.casefold() for path, unused in private_files
+              path.name.casefold()
+              for path, unused in private_files
           )
+
           if embedded_private != expected_private_names:
-              fail("Embedded private metadata coverage mismatch.")
+              fail(
+                  "Embedded private metadata coverage mismatch."
+              )
 
           counts = {}
+
           for row in rows:
               item_type = row.split("|", 1)[0]
-              counts[item_type] = counts.get(item_type, 0) + 1
-          print(f"Regenerated {index_name} with {len(rows)} records.")
+              counts[item_type] = (
+                  counts.get(item_type, 0) + 1
+              )
+
+          print(
+              f"Regenerated {index_name} "
+              f"with {len(rows)} records."
+          )
+
           for item_type in sorted(counts):
               print(f"{item_type}: {counts[item_type]}")
+
           notice(
-              "The complete generic Version 1 index and contained MOD_FILE rows "
-              "were rebuilt and verified."
+              "The complete generic Version 1 index and "
+              "contained MOD_FILE rows were rebuilt and verified."
           )
           PY
 
@@ -508,21 +810,28 @@ jobs:
         run: |
           set -euo pipefail
           git status --short
+
           if [ -z "$(git status --porcelain -- "$INDEX_FILE")" ]; then
             echo "Release index is already current."
             exit 0
           fi
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
           git add -- "$INDEX_FILE"
+
           if git diff --cached --quiet; then
             echo "No staged release-index changes."
             exit 0
           fi
+
           git diff --cached --stat
           git commit -m "Update NLH Mod Manager release index"
+
           if git push origin HEAD:main; then
             exit 0
           fi
+
           git pull --rebase origin main
           git push origin HEAD:main
