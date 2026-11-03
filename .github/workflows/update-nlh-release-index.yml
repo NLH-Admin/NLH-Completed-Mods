@@ -143,16 +143,16 @@ jobs:
                   )
               return value
 
-          def encode_private_metadata(path):
+          def encode_embedded_text(path):
               return (
                   "B64:"
                   + base64.b64encode(path.read_bytes()).decode("ascii")
               )
 
-          def decode_private_metadata(value, name):
+          def decode_embedded_text(value, name):
               if not value.startswith("B64:") or not value[4:]:
                   fail(
-                      f"Embedded private metadata is invalid for {name}."
+                      f"Embedded text is invalid for {name}."
                   )
               try:
                   return base64.b64decode(
@@ -161,7 +161,7 @@ jobs:
                   )
               except Exception:
                   fail(
-                      f"Embedded private metadata is invalid for {name}."
+                      f"Embedded text is invalid for {name}."
                   )
 
           def make_row(
@@ -418,7 +418,7 @@ jobs:
                       if private_name.casefold() in files_by_name
                       else ""
                   ),
-                  changelog=encode_private_metadata(path),
+                  changelog=encode_embedded_text(path),
               ))
 
           for path, version in sorted(
@@ -430,7 +430,7 @@ jobs:
                   path,
                   version=version,
                   base_name=path.name[:-len("_Private.txt")],
-                  changelog=encode_private_metadata(path),
+                  changelog=encode_embedded_text(path),
               ))
 
           for path in profiles:
@@ -510,7 +510,7 @@ jobs:
                   "PRIVATE",
                   path,
                   base_name=base_name,
-                  changelog=encode_private_metadata(path),
+                  changelog=encode_embedded_text(path),
               ))
 
           for path, base_name in sorted(
@@ -556,7 +556,7 @@ jobs:
           repository_paths = set()
           mod_file_keys = set()
           mod_file_paths = {}
-          embedded_private = set()
+          embedded_text_names = set()
 
           for line_number, line in enumerate(
               final_lines[2:],
@@ -720,15 +720,15 @@ jobs:
                   "RELEASE",
               }:
                   if (
-                      decode_private_metadata(changelog, name)
+                      decode_embedded_text(changelog, name)
                       != path.read_bytes()
                   ):
                       fail(
-                          f"Embedded private metadata mismatch "
+                          f"Embedded text mismatch "
                           f"for {name}"
                       )
 
-                  embedded_private.add(name.casefold())
+                  embedded_text_names.add(name.casefold())
 
           for parent, members in expected_mod_files.items():
               expected = {
@@ -758,18 +758,29 @@ jobs:
                   f"Missing={missing}; extra={extra}"
               )
 
-          expected_private_names = {
+          expected_embedded_text_names = {
               path.name.casefold()
               for path, unused in release_private_files
           }
-          expected_private_names.update(
+          expected_embedded_text_names.update(
               path.name.casefold()
               for path, unused in private_files
           )
+          expected_embedded_text_names.update(
+              path.name.casefold()
+              for path, unused in releases
+          )
 
-          if embedded_private != expected_private_names:
+          if embedded_text_names != expected_embedded_text_names:
+              missing = sorted(
+                  expected_embedded_text_names - embedded_text_names
+              )
+              extra = sorted(
+                  embedded_text_names - expected_embedded_text_names
+              )
               fail(
-                  "Embedded private metadata coverage mismatch."
+                  "Embedded text coverage mismatch. "
+                  f"Missing={missing}; extra={extra}"
               )
 
           counts = {}
