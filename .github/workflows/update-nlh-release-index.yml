@@ -57,11 +57,16 @@ jobs:
               r"^NLH Mod Manager Public Release V(?P<version>\d+(?:\.\d+)*)\.vbs$",
               re.IGNORECASE,
           )
+          release_js_pattern = re.compile(
+              r"^NLH Mod Manager Public Release V(?P<version>\d+(?:\.\d+)*)\.js$",
+              re.IGNORECASE,
+          )
           release_private_pattern = re.compile(
               r"^NLH Mod Manager Public Release V(?P<version>\d+(?:\.\d+)*)_Private\.txt$",
               re.IGNORECASE,
           )
           manager_pattern = re.compile(r"^NLH Mod Manager\.vbs$", re.IGNORECASE)
+          manager_js_pattern = re.compile(r"^NLH Mod Manager\.js$", re.IGNORECASE)
           profiles_pattern = re.compile(
               r"^NLH Mod Manager Squad Profiles\.txt$",
               re.IGNORECASE,
@@ -328,7 +333,9 @@ jobs:
               files_by_name[key] = path
 
           managers = []
+          managers_js = []
           releases = []
+          releases_js = []
           release_private_files = []
           profiles = []
           mods = []
@@ -343,11 +350,23 @@ jobs:
                   managers.append(path)
                   continue
 
+              if manager_js_pattern.fullmatch(name):
+                  managers_js.append(path)
+                  continue
+
               match = release_pattern.fullmatch(name)
               if match:
                   releases.append(
                       (path, match.group("version"))
                   )
+                  continue
+
+              match = release_js_pattern.fullmatch(name)
+              if match:
+                  releases_js.append((
+                      path,
+                      match.group("version"),
+                  ))
                   continue
 
               match = release_private_pattern.fullmatch(name)
@@ -401,6 +420,15 @@ jobs:
                   )
               )
 
+          for path in managers_js:
+              rows.append(
+                  make_row(
+                      "MANAGER_JS",
+                      path,
+                      base_name=path.stem,
+                  )
+              )
+
           for path, version in sorted(
               releases,
               key=lambda item: version_key(item[1]),
@@ -410,6 +438,26 @@ jobs:
 
               rows.append(make_row(
                   "RELEASE",
+                  path,
+                  version=version,
+                  base_name=base_name,
+                  private_metadata=(
+                      private_name
+                      if private_name.casefold() in files_by_name
+                      else ""
+                  ),
+                  changelog=encode_embedded_text(path),
+              ))
+
+          for path, version in sorted(
+              releases_js,
+              key=lambda item: version_key(item[1]),
+          ):
+              base_name = path.stem
+              private_name = f"{base_name}_Private.txt"
+
+              rows.append(make_row(
+                  "RELEASE_JS",
                   path,
                   version=version,
                   base_name=base_name,
@@ -718,6 +766,7 @@ jobs:
                   "PRIVATE",
                   "RELEASE_PRIVATE",
                   "RELEASE",
+                  "RELEASE_JS",
               }:
                   if (
                       decode_embedded_text(changelog, name)
@@ -769,6 +818,10 @@ jobs:
           expected_embedded_text_names.update(
               path.name.casefold()
               for path, unused in releases
+          )
+          expected_embedded_text_names.update(
+              path.name.casefold()
+              for path, unused in releases_js
           )
 
           if embedded_text_names != expected_embedded_text_names:
