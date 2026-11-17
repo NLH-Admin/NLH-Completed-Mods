@@ -405,6 +405,58 @@ jobs:
                   f"Gameplay, or UI: {mod_name}"
               )
 
+          def is_v31_root_compatibility_file(path):
+              name = path.name
+              return bool(
+                  manager_pattern.fullmatch(name)
+                  or manager_js_pattern.fullmatch(name)
+                  or release_pattern.fullmatch(name)
+                  or release_js_pattern.fullmatch(name)
+                  or release_private_pattern.fullmatch(name)
+              )
+
+          def restore_v31_compatibility_file(source):
+              destination = root / source.name
+              if source == destination:
+                  return destination
+              if destination.exists():
+                  if filecmp.cmp(source, destination, shallow=False):
+                      source.unlink()
+                      moved_root_files.append((source.name, destination))
+                      print(
+                          "Removed identical nested compatibility duplicate: "
+                          f"{source.relative_to(root).as_posix()}"
+                      )
+                      return destination
+                  fail(
+                      "Cannot restore V31 compatibility file because a "
+                      "different root file already exists: "
+                      f"{source.name}"
+                  )
+              source.replace(destination)
+              moved_root_files.append((source.name, destination))
+              print(
+                  "Restored V31 compatibility file to repository root: "
+                  f"{source.name}"
+              )
+              return destination
+
+          # V31 directly requests manager, release, and release-private files
+          # by root filename. Restore any previously nested copies first.
+          for compatibility_root in (root / "Release Versions",):
+              if not compatibility_root.is_dir():
+                  continue
+              for path in sorted(
+                  (
+                      item
+                      for item in compatibility_root.rglob("*")
+                      if item.is_file()
+                      and is_v31_root_compatibility_file(item)
+                  ),
+                  key=lambda item: item.relative_to(root).as_posix().casefold(),
+              ):
+                  restore_v31_compatibility_file(path)
+
           root_files = sorted(
               (
                   path
@@ -423,29 +475,15 @@ jobs:
               release_private_match = release_private_pattern.fullmatch(name)
               mod_match = mod_pattern.fullmatch(name)
 
-              if manager_pattern.fullmatch(name) or manager_js_pattern.fullmatch(name):
-                  move_root_file(
-                      path,
-                      root / "Release Versions" / "Manager",
-                  )
-              elif release_match:
-                  version = release_match.group("version")
-                  move_root_file(
-                      path,
-                      root / "Release Versions" / f"V{version}",
-                  )
-              elif release_js_match:
-                  version = release_js_match.group("version")
-                  move_root_file(
-                      path,
-                      root / "Release Versions" / f"V{version}",
-                  )
-              elif release_private_match:
-                  version = release_private_match.group("version")
-                  move_root_file(
-                      path,
-                      root / "Release Versions" / f"V{version}",
-                  )
+              if (
+                  manager_pattern.fullmatch(name)
+                  or manager_js_pattern.fullmatch(name)
+                  or release_match
+                  or release_js_match
+                  or release_private_match
+              ):
+                  # Preserve exact V31 root lookup compatibility.
+                  continue
               elif profiles_pattern.fullmatch(name) or name.casefold() == "nlh_mm.ico":
                   move_root_file(path, root / "Assets" / "General")
               elif mod_match:
@@ -497,11 +535,10 @@ jobs:
               move_root_file(path, destination_directory)
 
           notice(
-              f"Organized {len(moved_root_files)} recognized root files."
+              f"Applied {len(moved_root_files)} compatibility restorations and safe file moves."
           )
 
           content_roots = (
-              root / "Release Versions",
               root / "Mods",
               root / "Assets",
           )
@@ -517,13 +554,21 @@ jobs:
                   + ", ".join(missing_content_roots)
               )
 
+          nested_repository_files = [
+              path
+              for content_root in content_roots
+              for path in content_root.rglob("*")
+              if path.is_file()
+          ]
+          root_compatibility_files = [
+              path
+              for path in root.iterdir()
+              if path.is_file()
+              and path != index_path
+              and is_v31_root_compatibility_file(path)
+          ]
           repository_files = sorted(
-              (
-                  path
-                  for content_root in content_roots
-                  for path in content_root.rglob("*")
-                  if path.is_file()
-              ),
+              nested_repository_files + root_compatibility_files,
               key=lambda path: (
                   path.relative_to(root).as_posix().casefold()
               ),
@@ -581,7 +626,7 @@ jobs:
               if manager_pattern.fullmatch(name):
                   require_parent(
                       path,
-                      root / "Release Versions" / "Manager",
+                      root,
                       "Manager VBS",
                   )
                   managers.append(path)
@@ -590,7 +635,7 @@ jobs:
               if manager_js_pattern.fullmatch(name):
                   require_parent(
                       path,
-                      root / "Release Versions" / "Manager",
+                      root,
                       "Manager JS",
                   )
                   managers_js.append(path)
@@ -601,7 +646,7 @@ jobs:
                   version = match.group("version")
                   require_parent(
                       path,
-                      root / "Release Versions" / f"V{version}",
+                      root,
                       "Manager public VBS release",
                   )
                   releases.append((path, version))
@@ -612,7 +657,7 @@ jobs:
                   version = match.group("version")
                   require_parent(
                       path,
-                      root / "Release Versions" / f"V{version}",
+                      root,
                       "Manager public JS release",
                   )
                   releases_js.append((path, version))
@@ -623,7 +668,7 @@ jobs:
                   version = match.group("version")
                   require_parent(
                       path,
-                      root / "Release Versions" / f"V{version}",
+                      root,
                       "Manager release private metadata",
                   )
                   release_private_files.append((path, version))
@@ -1166,7 +1211,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # Stage the nested destinations and deleted root sources.
+          # Stage safe moves, compatibility restorations, and the rebuilt index.
           git add -A
 
           if git diff --cached --quiet; then
@@ -1175,7 +1220,7 @@ jobs:
           fi
 
           git diff --cached --stat
-          git commit -m "Organize NLH repository and update release index"
+          git commit -m "Preserve V31 root compatibility and update release index"
 
           if git push origin HEAD:main; then
             exit 0
