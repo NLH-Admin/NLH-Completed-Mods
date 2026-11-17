@@ -518,6 +518,10 @@ jobs:
               ),
               key=lambda item: item.name.casefold(),
           ):
+              # Release-private metadata is a protected V31 root file, not a
+              # loose mod sidecar. Leave it at the root and index it separately.
+              if release_private_pattern.fullmatch(path.name):
+                  continue
               private_match = private_pattern.fullmatch(path.name)
               changelog_match = changelog_pattern.fullmatch(path.name)
               match = private_match or changelog_match
