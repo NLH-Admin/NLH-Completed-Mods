@@ -35,6 +35,7 @@ jobs:
 
           python3 <<'PY'
           import base64
+          import filecmp
           import hashlib
           import os
           import re
@@ -345,9 +346,18 @@ jobs:
               destination_directory.mkdir(parents=True, exist_ok=True)
               destination = destination_directory / source.name
               if destination.exists():
+                  if filecmp.cmp(source, destination, shallow=False):
+                      source.unlink()
+                      moved_root_files.append((source.name, destination))
+                      print(
+                          "Removed duplicate root file already present at: "
+                          f"{destination.relative_to(root).as_posix()}"
+                      )
+                      return destination
                   fail(
-                      "Cannot organize root file because its destination "
-                      f"already exists: {destination.relative_to(root).as_posix()}"
+                      "Cannot organize root file because a different file "
+                      "already exists at its destination: "
+                      f"{destination.relative_to(root).as_posix()}"
                   )
               source.replace(destination)
               moved_root_files.append((source.name, destination))
@@ -1156,7 +1166,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add -A --             "Release Versions"             "Mods"             "Assets"             "$INDEX_FILE"
+          # Stage the nested destinations and deleted root sources.
+          git add -A
 
           if git diff --cached --quiet; then
             echo "No generated layout or release-index changes."
