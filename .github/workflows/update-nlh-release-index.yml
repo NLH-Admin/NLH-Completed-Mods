@@ -312,25 +312,69 @@ jobs:
 
               return "FILE"
 
+          content_roots = (
+              root / "Release Versions",
+              root / "Mods",
+              root / "Assets",
+          )
+
+          missing_content_roots = [
+              path.name
+              for path in content_roots
+              if not path.is_dir()
+          ]
+          if missing_content_roots:
+              fail(
+                  "Required repository folders are missing: "
+                  + ", ".join(missing_content_roots)
+              )
+
           repository_files = sorted(
               (
                   path
-                  for path in root.iterdir()
-                  if path.is_file() and path.name != index_name
+                  for content_root in content_roots
+                  for path in content_root.rglob("*")
+                  if path.is_file()
               ),
-              key=lambda path: path.name.casefold(),
+              key=lambda path: (
+                  path.relative_to(root).as_posix().casefold()
+              ),
           )
 
           files_by_name = {}
+          files_by_relative_path = {}
 
           for path in repository_files:
-              key = path.name.casefold()
-              if key in files_by_name:
+              name_key = path.name.casefold()
+              relative_key = (
+                  path.relative_to(root).as_posix().casefold()
+              )
+              if relative_key in files_by_relative_path:
                   fail(
-                      f"Duplicate case-insensitive filename: "
-                      f"{path.name}"
+                      "Duplicate case-insensitive repository path: "
+                      f"{path.relative_to(root).as_posix()}"
                   )
-              files_by_name[key] = path
+              files_by_relative_path[relative_key] = path
+              if name_key in files_by_name:
+                  other = files_by_name[name_key]
+                  fail(
+                      "Duplicate case-insensitive filename across "
+                      "the indexed folders: "
+                      f"{other.relative_to(root).as_posix()} and "
+                      f"{path.relative_to(root).as_posix()}"
+                  )
+              files_by_name[name_key] = path
+
+          def same_folder_file(path, name):
+              candidate = path.with_name(name)
+              return candidate if candidate.is_file() else None
+
+          def require_parent(path, expected_parent, label):
+              if path.parent != expected_parent:
+                  fail(
+                      f"{label} is in the wrong folder: "
+                      f"{path.relative_to(root).as_posix()}"
+                  )
 
           managers = []
           managers_js = []
@@ -347,41 +391,80 @@ jobs:
               name = path.name
 
               if manager_pattern.fullmatch(name):
+                  require_parent(
+                      path,
+                      root / "Release Versions" / "Manager",
+                      "Manager VBS",
+                  )
                   managers.append(path)
                   continue
 
               if manager_js_pattern.fullmatch(name):
+                  require_parent(
+                      path,
+                      root / "Release Versions" / "Manager",
+                      "Manager JS",
+                  )
                   managers_js.append(path)
                   continue
 
               match = release_pattern.fullmatch(name)
               if match:
-                  releases.append(
-                      (path, match.group("version"))
+                  version = match.group("version")
+                  require_parent(
+                      path,
+                      root / "Release Versions" / f"V{version}",
+                      "Manager public VBS release",
                   )
+                  releases.append((path, version))
                   continue
 
               match = release_js_pattern.fullmatch(name)
               if match:
-                  releases_js.append((
+                  version = match.group("version")
+                  require_parent(
                       path,
-                      match.group("version"),
-                  ))
+                      root / "Release Versions" / f"V{version}",
+                      "Manager public JS release",
+                  )
+                  releases_js.append((path, version))
                   continue
 
               match = release_private_pattern.fullmatch(name)
               if match:
-                  release_private_files.append(
-                      (path, match.group("version"))
+                  version = match.group("version")
+                  require_parent(
+                      path,
+                      root / "Release Versions" / f"V{version}",
+                      "Manager release private metadata",
                   )
+                  release_private_files.append((path, version))
                   continue
 
               if profiles_pattern.fullmatch(name):
+                  require_parent(
+                      path,
+                      root / "Assets" / "General",
+                      "Squad profiles",
+                  )
                   profiles.append(path)
                   continue
 
               match = mod_pattern.fullmatch(name)
               if match:
+                  relative_parts = path.relative_to(root).parts
+                  if (
+                      len(relative_parts) < 4
+                      or relative_parts[0] != "Mods"
+                      or relative_parts[1] not in {
+                          "Cosmetic", "Gameplay", "UI"
+                      }
+                  ):
+                      fail(
+                          "Mod ZIP must be under "
+                          "Mods/<Cosmetic|Gameplay|UI>/<Mod Name>/: "
+                          f"{path.relative_to(root).as_posix()}"
+                      )
                   mods.append((
                       path,
                       match.group("version"),
@@ -391,6 +474,11 @@ jobs:
 
               match = private_pattern.fullmatch(name)
               if match:
+                  if path.relative_to(root).parts[0] != "Mods":
+                      fail(
+                          "Mod private metadata is outside Mods/: "
+                          f"{path.relative_to(root).as_posix()}"
+                      )
                   private_files.append(
                       (path, match.group("base"))
                   )
@@ -398,6 +486,11 @@ jobs:
 
               match = changelog_pattern.fullmatch(name)
               if match:
+                  if path.relative_to(root).parts[0] != "Mods":
+                      fail(
+                          "Mod changelog is outside Mods/: "
+                          f"{path.relative_to(root).as_posix()}"
+                      )
                   changelog_files.append(
                       (path, match.group("base"))
                   )
@@ -443,7 +536,7 @@ jobs:
                   base_name=base_name,
                   private_metadata=(
                       private_name
-                      if private_name.casefold() in files_by_name
+                      if same_folder_file(path, private_name)
                       else ""
                   ),
                   changelog=encode_embedded_text(path),
@@ -463,7 +556,7 @@ jobs:
                   base_name=base_name,
                   private_metadata=(
                       private_name
-                      if private_name.casefold() in files_by_name
+                      if same_folder_file(path, private_name)
                       else ""
                   ),
                   changelog=encode_embedded_text(path),
@@ -516,12 +609,12 @@ jobs:
                   base_name=base_name,
                   private_metadata=(
                       private_name
-                      if private_name.casefold() in files_by_name
+                      if same_folder_file(path, private_name)
                       else ""
                   ),
                   changelog=(
                       changelog_name
-                      if changelog_name.casefold() in files_by_name
+                      if same_folder_file(path, changelog_name)
                       else ""
                   ),
               ))
@@ -573,7 +666,7 @@ jobs:
 
           for path in sorted(
               generic_files,
-              key=lambda item: item.name.casefold(),
+              key=lambda item: item.relative_to(root).as_posix().casefold(),
           ):
               rows.append(make_row(
                   generic_type(path),
