@@ -35,7 +35,6 @@ jobs:
 
           python3 <<'PY'
           import base64
-          import filecmp
           import hashlib
           import os
           import re
@@ -313,256 +312,25 @@ jobs:
 
               return "FILE"
 
-          # Root-file intake organizer. Files already placed in the agreed
-          # hierarchy are left unchanged. Recognized loose files in the
-          # repository root are moved before the index is regenerated.
-          mod_type_overrides = {
-              "anakeen skyweeny": "Cosmetic",
-              "bwg-9d": "Cosmetic",
-              "darth onwards": "Cosmetic",
-              "levi solo": "Cosmetic",
-              "god mode anakin redux": "Gameplay",
-              "hero spawn menu for hvv (nlh edition)": "Gameplay",
-              "remove spawn menu restrictions (nlh edition)": "Gameplay",
-              "custom enemy, team and group colours": "UI",
-          }
-
-          media_destination_overrides = {
-              "the final levi.mp4": (
-                  "Assets", "Media", "Clips", "Battlefront 2"
-              ),
-              "lolleviwhatsthisguydoing.mp4": (
-                  "Assets", "Media", "Clips", "Battlefront 2"
-              ),
-          }
-
-          audio_extensions = {".mp3", ".wav", ".flac", ".m4a", ".ogg"}
-          video_extensions = {".mp4", ".mkv", ".mov", ".avi", ".webm"}
-          still_image_extensions = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
-
-          moved_root_files = []
-
-          def move_root_file(source, destination_directory):
-              destination_directory.mkdir(parents=True, exist_ok=True)
-              destination = destination_directory / source.name
-              if destination.exists():
-                  if filecmp.cmp(source, destination, shallow=False):
-                      source.unlink()
-                      moved_root_files.append((source.name, destination))
-                      print(
-                          "Removed duplicate root file already present at: "
-                          f"{destination.relative_to(root).as_posix()}"
-                      )
-                      return destination
-                  fail(
-                      "Cannot organize root file because a different file "
-                      "already exists at its destination: "
-                      f"{destination.relative_to(root).as_posix()}"
-                  )
-              source.replace(destination)
-              moved_root_files.append((source.name, destination))
-              print(
-                  "Organized root file: "
-                  f"{source.name} -> "
-                  f"{destination.relative_to(root).as_posix()}"
-              )
-              return destination
-
-          def stable_mod_name_from_base(base_name, character):
-              parenthesized = re.fullmatch(
-                  r".+\((?P<mod>[^()]+)\)",
-                  character,
-              )
-              if parenthesized:
-                  candidate = parenthesized.group("mod").strip()
-                  if candidate.casefold() != "nlh edition":
-                      return candidate
-              version_suffix = re.search(
-                  r"_(?:\d+(?:\.\d+)*)$",
-                  base_name,
-                  re.IGNORECASE,
-              )
-              if not version_suffix:
-                  fail(f"Cannot determine mod folder from {base_name}")
-              return base_name[:version_suffix.start()]
-
-          def infer_mod_type(mod_name):
-              key = mod_name.casefold()
-              if key in mod_type_overrides:
-                  return mod_type_overrides[key]
-              ui_terms = ("ui", "hud", "menu", "colour", "color", "interface")
-              gameplay_terms = (
-                  "god mode", "spawn", "restriction", "gameplay",
-                  "ability", "stamina", "damage", "health",
-              )
-              if any(term in key for term in ui_terms):
-                  return "UI"
-              if any(term in key for term in gameplay_terms):
-                  return "Gameplay"
-              fail(
-                  "A loose mod ZIP could not be categorized safely. Add its "
-                  "stable mod name to mod_type_overrides as Cosmetic, "
-                  f"Gameplay, or UI: {mod_name}"
-              )
-
-          root_files = sorted(
+          repository_files = sorted(
               (
                   path
                   for path in root.iterdir()
-                  if path.is_file() and path != index_path
+                  if path.is_file() and path.name != index_name
               ),
               key=lambda path: path.name.casefold(),
           )
 
-          # First move primary files and remember each mod package destination.
-          root_mod_destinations = {}
-          for path in root_files:
-              name = path.name
-              release_match = release_pattern.fullmatch(name)
-              release_js_match = release_js_pattern.fullmatch(name)
-              release_private_match = release_private_pattern.fullmatch(name)
-              mod_match = mod_pattern.fullmatch(name)
-
-              if manager_pattern.fullmatch(name) or manager_js_pattern.fullmatch(name):
-                  move_root_file(
-                      path,
-                      root / "Release Versions" / "Manager",
-                  )
-              elif release_match:
-                  version = release_match.group("version")
-                  move_root_file(
-                      path,
-                      root / "Release Versions" / f"V{version}",
-                  )
-              elif release_js_match:
-                  version = release_js_match.group("version")
-                  move_root_file(
-                      path,
-                      root / "Release Versions" / f"V{version}",
-                  )
-              elif release_private_match:
-                  version = release_private_match.group("version")
-                  move_root_file(
-                      path,
-                      root / "Release Versions" / f"V{version}",
-                  )
-              elif profiles_pattern.fullmatch(name) or name.casefold() == "nlh_mm.ico":
-                  move_root_file(path, root / "Assets" / "General")
-              elif mod_match:
-                  base_name = path.stem
-                  character = mod_match.group("character")
-                  mod_name = stable_mod_name_from_base(base_name, character)
-                  mod_type = infer_mod_type(mod_name)
-                  destination_directory = root / "Mods" / mod_type / mod_name
-                  moved = move_root_file(path, destination_directory)
-                  root_mod_destinations[base_name.casefold()] = moved.parent
-              elif path.suffix.casefold() in audio_extensions:
-                  move_root_file(path, root / "Assets" / "Media" / "Audio")
-              elif path.suffix.casefold() == ".gif":
-                  move_root_file(path, root / "Assets" / "Media" / "GIFs")
-              elif path.suffix.casefold() in still_image_extensions:
-                  move_root_file(path, root / "Assets" / "Media" / "Images")
-              elif path.suffix.casefold() in video_extensions:
-                  override = media_destination_overrides.get(name.casefold())
-                  destination_directory = (
-                      root.joinpath(*override)
-                      if override
-                      else root / "Assets" / "Media" / "Clips"
-                  )
-                  move_root_file(path, destination_directory)
-
-          # Then move loose mod sidecars beside their matching root ZIP.
-          for path in sorted(
-              (
-                  item
-                  for item in root.iterdir()
-                  if item.is_file() and item != index_path
-              ),
-              key=lambda item: item.name.casefold(),
-          ):
-              private_match = private_pattern.fullmatch(path.name)
-              changelog_match = changelog_pattern.fullmatch(path.name)
-              match = private_match or changelog_match
-              if not match:
-                  continue
-              base_name = match.group("base")
-              destination_directory = root_mod_destinations.get(
-                  base_name.casefold()
-              )
-              if destination_directory is None:
-                  fail(
-                      "Loose mod metadata has no matching loose ZIP to "
-                      f"determine its destination: {path.name}"
-                  )
-              move_root_file(path, destination_directory)
-
-          notice(
-              f"Organized {len(moved_root_files)} recognized root files."
-          )
-
-          content_roots = (
-              root / "Release Versions",
-              root / "Mods",
-              root / "Assets",
-          )
-
-          missing_content_roots = [
-              path.name
-              for path in content_roots
-              if not path.is_dir()
-          ]
-          if missing_content_roots:
-              fail(
-                  "Required repository folders are missing: "
-                  + ", ".join(missing_content_roots)
-              )
-
-          repository_files = sorted(
-              (
-                  path
-                  for content_root in content_roots
-                  for path in content_root.rglob("*")
-                  if path.is_file()
-              ),
-              key=lambda path: (
-                  path.relative_to(root).as_posix().casefold()
-              ),
-          )
-
           files_by_name = {}
-          files_by_relative_path = {}
 
           for path in repository_files:
-              name_key = path.name.casefold()
-              relative_key = (
-                  path.relative_to(root).as_posix().casefold()
-              )
-              if relative_key in files_by_relative_path:
+              key = path.name.casefold()
+              if key in files_by_name:
                   fail(
-                      "Duplicate case-insensitive repository path: "
-                      f"{path.relative_to(root).as_posix()}"
+                      f"Duplicate case-insensitive filename: "
+                      f"{path.name}"
                   )
-              files_by_relative_path[relative_key] = path
-              if name_key in files_by_name:
-                  other = files_by_name[name_key]
-                  fail(
-                      "Duplicate case-insensitive filename across "
-                      "the indexed folders: "
-                      f"{other.relative_to(root).as_posix()} and "
-                      f"{path.relative_to(root).as_posix()}"
-                  )
-              files_by_name[name_key] = path
-
-          def same_folder_file(path, name):
-              candidate = path.with_name(name)
-              return candidate if candidate.is_file() else None
-
-          def require_parent(path, expected_parent, label):
-              if path.parent != expected_parent:
-                  fail(
-                      f"{label} is in the wrong folder: "
-                      f"{path.relative_to(root).as_posix()}"
-                  )
+              files_by_name[key] = path
 
           managers = []
           managers_js = []
@@ -579,80 +347,41 @@ jobs:
               name = path.name
 
               if manager_pattern.fullmatch(name):
-                  require_parent(
-                      path,
-                      root / "Release Versions" / "Manager",
-                      "Manager VBS",
-                  )
                   managers.append(path)
                   continue
 
               if manager_js_pattern.fullmatch(name):
-                  require_parent(
-                      path,
-                      root / "Release Versions" / "Manager",
-                      "Manager JS",
-                  )
                   managers_js.append(path)
                   continue
 
               match = release_pattern.fullmatch(name)
               if match:
-                  version = match.group("version")
-                  require_parent(
-                      path,
-                      root / "Release Versions" / f"V{version}",
-                      "Manager public VBS release",
+                  releases.append(
+                      (path, match.group("version"))
                   )
-                  releases.append((path, version))
                   continue
 
               match = release_js_pattern.fullmatch(name)
               if match:
-                  version = match.group("version")
-                  require_parent(
+                  releases_js.append((
                       path,
-                      root / "Release Versions" / f"V{version}",
-                      "Manager public JS release",
-                  )
-                  releases_js.append((path, version))
+                      match.group("version"),
+                  ))
                   continue
 
               match = release_private_pattern.fullmatch(name)
               if match:
-                  version = match.group("version")
-                  require_parent(
-                      path,
-                      root / "Release Versions" / f"V{version}",
-                      "Manager release private metadata",
+                  release_private_files.append(
+                      (path, match.group("version"))
                   )
-                  release_private_files.append((path, version))
                   continue
 
               if profiles_pattern.fullmatch(name):
-                  require_parent(
-                      path,
-                      root / "Assets" / "General",
-                      "Squad profiles",
-                  )
                   profiles.append(path)
                   continue
 
               match = mod_pattern.fullmatch(name)
               if match:
-                  relative_parts = path.relative_to(root).parts
-                  if (
-                      len(relative_parts) < 4
-                      or relative_parts[0] != "Mods"
-                      or relative_parts[1] not in {
-                          "Cosmetic", "Gameplay", "UI"
-                      }
-                  ):
-                      fail(
-                          "Mod ZIP must be under "
-                          "Mods/<Cosmetic|Gameplay|UI>/<Mod Name>/: "
-                          f"{path.relative_to(root).as_posix()}"
-                      )
                   mods.append((
                       path,
                       match.group("version"),
@@ -662,11 +391,6 @@ jobs:
 
               match = private_pattern.fullmatch(name)
               if match:
-                  if path.relative_to(root).parts[0] != "Mods":
-                      fail(
-                          "Mod private metadata is outside Mods/: "
-                          f"{path.relative_to(root).as_posix()}"
-                      )
                   private_files.append(
                       (path, match.group("base"))
                   )
@@ -674,11 +398,6 @@ jobs:
 
               match = changelog_pattern.fullmatch(name)
               if match:
-                  if path.relative_to(root).parts[0] != "Mods":
-                      fail(
-                          "Mod changelog is outside Mods/: "
-                          f"{path.relative_to(root).as_posix()}"
-                      )
                   changelog_files.append(
                       (path, match.group("base"))
                   )
@@ -724,7 +443,7 @@ jobs:
                   base_name=base_name,
                   private_metadata=(
                       private_name
-                      if same_folder_file(path, private_name)
+                      if private_name.casefold() in files_by_name
                       else ""
                   ),
                   changelog=encode_embedded_text(path),
@@ -744,7 +463,7 @@ jobs:
                   base_name=base_name,
                   private_metadata=(
                       private_name
-                      if same_folder_file(path, private_name)
+                      if private_name.casefold() in files_by_name
                       else ""
                   ),
                   changelog=encode_embedded_text(path),
@@ -797,12 +516,12 @@ jobs:
                   base_name=base_name,
                   private_metadata=(
                       private_name
-                      if same_folder_file(path, private_name)
+                      if private_name.casefold() in files_by_name
                       else ""
                   ),
                   changelog=(
                       changelog_name
-                      if same_folder_file(path, changelog_name)
+                      if changelog_name.casefold() in files_by_name
                       else ""
                   ),
               ))
@@ -854,7 +573,7 @@ jobs:
 
           for path in sorted(
               generic_files,
-              key=lambda item: item.relative_to(root).as_posix().casefold(),
+              key=lambda item: item.name.casefold(),
           ):
               rows.append(make_row(
                   generic_type(path),
@@ -1158,24 +877,23 @@ jobs:
           set -euo pipefail
           git status --short
 
-          if [ -z "$(git status --porcelain)" ]; then
-            echo "Repository layout and release index are already current."
+          if [ -z "$(git status --porcelain -- "$INDEX_FILE")" ]; then
+            echo "Release index is already current."
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # Stage the nested destinations and deleted root sources.
-          git add -A
+          git add -- "$INDEX_FILE"
 
           if git diff --cached --quiet; then
-            echo "No generated layout or release-index changes."
+            echo "No staged release-index changes."
             exit 0
           fi
 
           git diff --cached --stat
-          git commit -m "Organize NLH repository and update release index"
+          git commit -m "Update NLH Mod Manager release index"
 
           if git push origin HEAD:main; then
             exit 0
