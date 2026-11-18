@@ -36,7 +36,7 @@ PRIVATE|Hero Spawn Menu For HVV (NLH Edition)_1.1_Private.txt|Mods/Gameplay/Hero
 ICON|NLH_MM.ico|Assets/General/NLH_MM.ico|fc3b7db22162ce1911cf7988266360121f52d056|a37f1225f73b50ea7a918a01bee8c8bbde889af1e91d328e5f96e24a8f5c0c3b|79051|||NLH_MM||
 FILE|If I Die Young.mp3|Assets/Media/Audio/If%20I%20Die%20Young.mp3|48cc43924f98b73b2e23f419a4df4e6ffbe5b52d|7acf34c7665b8144087ddbcc03f2e1b0567b481c586a4e31469690737bac0e09|9320888|||If I Die Young||
 FILE|LGV3.mp3|Assets/Media/Audio/LGV3.mp3|5f1d512b689d1971cd862f4083d5708903fb18d2|67cb55cf6d5b5c9c8537c84280ab659becd8895059fa888964a03521a88d84a4|894540|||LGV3||
-TEXT_ASSET|yes.txt|Assets/Media/Battlefront/yes.txt|6e9f0da13f19b444ec3a9c3d6e795ad35c0554a2|91ee5e9f42ba3d34e414443b36a27b797a56a47aad6bb1e4c1769e69c77ce0ca|2|||yes||
+FILE|WoahStepGooshSteppedOnThisGuy.mp4|Assets/Media/Battlefront/WoahStepGooshSteppedOnThisGuy.mp4|1f03606470e0ac088631a6c5986a0585079df1bf|22bbc6c39a63ddc897e5a5e3a26731386dba28fce3dbe56849b943bec131471c|14779088|||WoahStepGooshSteppedOnThisGuy||
 FILE|lolleviwhatisthisguyoding.mp4|Assets/Media/Clips/Battlefront%202/Heroes%20Vs%20Villains/lolleviwhatisthisguyoding.mp4|153b2a62a67612ff9a2012599380bd55440d7615|d47f9f600c704de0826bb918da774339556fc56889b3caa7f57f26da7530e8cc|9208039|||lolleviwhatisthisguyoding||
 FILE|The Final Levi.mp4|Assets/Media/Clips/Battlefront%202/Levi%20Singing/The%20Final%20Levi.mp4|1fd9c95c42145c35be0f7c2b05237ee82ddece94|76df9d116f30fc97dc8effa1456e68da62acd40c6831530c4aed04c29a7cfd88|8260063|||The Final Levi||
 GIF|LeviFliesNow.gif|Assets/Media/GIFs/LeviFliesNow.gif|dcf48d6d2ec3be550010a2e2948c8e96e77b0676|c540a8ee5b0832f4019ac1e7347e749f6dc9a9da2da2eef2793d4247d57fd850|9642232|||LeviFliesNow||
