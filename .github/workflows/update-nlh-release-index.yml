@@ -291,13 +291,6 @@ jobs:
               return members
 
           def generic_type(path):
-              relative_parts = path.relative_to(root).parts
-              if (
-                  len(relative_parts) >= 4
-                  and relative_parts[:3] == ("Assets", "Media", "Clips")
-                  and path.suffix.casefold() in video_extensions
-              ):
-                  return "CLIP"
               suffix = path.suffix.casefold()
 
               if suffix == ".ico":
