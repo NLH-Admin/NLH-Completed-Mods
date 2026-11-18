@@ -311,6 +311,10 @@ jobs:
                   game = clip_games.get(tail[0].casefold(), tail[0])
                   if len(tail) > 1:
                       game_mode = " / ".join(tail[1:])
+              else:
+                  # Legacy clips may already exist directly under Clips/.
+                  # Keep them indexed without inventing a game assignment.
+                  game = "Uncategorized"
               return game, game_mode
 
           def generic_type(path):
