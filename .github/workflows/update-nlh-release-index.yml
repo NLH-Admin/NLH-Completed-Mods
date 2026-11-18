@@ -50,9 +50,9 @@ jobs:
           signature = "NLH-REPOSITORY-INDEX|1"
           header = (
               "#TYPE|NAME|RAW_PATH|GIT_BLOB_SHA|SHA256|SIZE|VERSION|"
-              "CHARACTER|BASE_NAME|PRIVATE_METADATA|CHANGELOG"
+              "CHARACTER|BASE_NAME|PRIVATE_METADATA|CHANGELOG|GAME|GAME_MODE"
           )
-          field_count = 11
+          field_count = 13
 
           release_pattern = re.compile(
               r"^NLH Mod Manager Public Release V(?P<version>\d+(?:\.\d+)*)\.vbs$",
@@ -85,6 +85,8 @@ jobs:
               re.IGNORECASE,
           )
 
+          clip_extensions = {".mp4", ".mkv", ".mov", ".avi", ".webm"}
+          clip_games = {"battlefront 2": "Star Wars Battlefront II"}
           image_extensions = {
               ".gif",
               ".png",
@@ -178,6 +180,8 @@ jobs:
               base_name="",
               private_metadata="",
               changelog="",
+              game="",
+              game_mode="",
               sha256_override=None,
               size_override=None,
               name_override=None,
@@ -202,6 +206,8 @@ jobs:
                   base_name,
                   private_metadata,
                   changelog,
+                  game,
+                  game_mode,
               ]
               if len(fields) != field_count:
                   fail("Internal index row field-count error.")
@@ -290,9 +296,28 @@ jobs:
 
               return members
 
+          def clip_metadata(path):
+              relative = path.relative_to(root)
+              parts = list(relative.parts)
+              lowered = [part.casefold() for part in parts]
+              try:
+                  clips_index = lowered.index("clips")
+              except ValueError:
+                  return "", ""
+              tail = parts[clips_index + 1:-1]
+              game = ""
+              game_mode = ""
+              if tail:
+                  game = clip_games.get(tail[0].casefold(), tail[0])
+                  if len(tail) > 1:
+                      game_mode = " / ".join(tail[1:])
+              return game, game_mode
+
           def generic_type(path):
               suffix = path.suffix.casefold()
 
+              if suffix in clip_extensions and "clips" in [part.casefold() for part in path.parts]:
+                  return "CLIP"
               if suffix == ".ico":
                   return "ICON"
 
@@ -905,10 +930,14 @@ jobs:
               generic_files,
               key=lambda item: item.relative_to(root).as_posix().casefold(),
           ):
+              item_type = generic_type(path)
+              game, game_mode = clip_metadata(path) if item_type == "CLIP" else ("", "")
               rows.append(make_row(
-                  generic_type(path),
+                  item_type,
                   path,
                   base_name=path.stem,
+                  game=game,
+                  game_mode=game_mode,
               ))
 
           output_text = "\n".join([
@@ -960,8 +989,14 @@ jobs:
                   base_name,
                   private_metadata,
                   changelog,
+                  game,
+                  game_mode,
               ) = fields
 
+              if item_type == "CLIP" and not game:
+                  fail(f"CLIP row is missing GAME on line {line_number}")
+              if item_type != "CLIP" and (game or game_mode):
+                  fail(f"Non-CLIP row contains clip metadata on line {line_number}")
               decoded = "/".join(
                   unquote(part)
                   for part in stored_raw_path.split("/")
@@ -1183,7 +1218,7 @@ jobs:
               print(f"{item_type}: {counts[item_type]}")
 
           notice(
-              "The complete generic Version 1 index and "
+              "The complete generic Version 1 index with CLIP game and mode metadata and "
               "contained MOD_FILE rows were rebuilt and verified."
           )
           PY
