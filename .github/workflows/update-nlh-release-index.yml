@@ -33,7 +33,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          python3 <<'PY'
+          cat > "$RUNNER_TEMP/rebuild_release_index.py" <<'PY'
           import base64
           import filecmp
           import hashlib
@@ -1187,6 +1187,7 @@ jobs:
               "contained MOD_FILE rows were rebuilt and verified."
           )
           PY
+          python3 "$RUNNER_TEMP/rebuild_release_index.py"
 
       - name: Display regenerated release index summary
         shell: bash
@@ -1203,32 +1204,39 @@ jobs:
         shell: bash
         env:
           INDEX_FILE: NLH Mod Manager Release Index.txt
+          MAX_PUSH_ATTEMPTS: 3
         run: |
           set -euo pipefail
-          git status --short
-
-          if [ -z "$(git status --porcelain)" ]; then
-            echo "Repository layout and release index are already current."
-            exit 0
-          fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # Stage safe moves, compatibility restorations, and the rebuilt index.
-          git add -A
+          for attempt in $(seq 1 "$MAX_PUSH_ATTEMPTS"); do
+            echo "Release-index push attempt $attempt of $MAX_PUSH_ATTEMPTS."
+            git status --short
 
-          if git diff --cached --quiet; then
-            echo "No generated layout or release-index changes."
-            exit 0
-          fi
+            # Stage safe moves, compatibility restorations, and the rebuilt index.
+            git add -A
 
-          git diff --cached --stat
-          git commit -m "Preserve V31 root compatibility and update release index"
+            if git diff --cached --quiet; then
+              echo "Repository layout and release index are already current."
+              exit 0
+            fi
 
-          if git push origin HEAD:main; then
-            exit 0
-          fi
+            git diff --cached --stat
+            git commit -m "Preserve V31 root compatibility and update release index"
 
-          git pull --rebase origin main
-          git push origin HEAD:main
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+
+            if [ "$attempt" -ge "$MAX_PUSH_ATTEMPTS" ]; then
+              echo "Push remained non-fast-forward after $MAX_PUSH_ATTEMPTS regenerated attempts." >&2
+              exit 1
+            fi
+
+            echo "Remote main changed during generation. Resetting to the latest remote state and regenerating."
+            git fetch origin main
+            git reset --hard origin/main
+            python3 "$RUNNER_TEMP/rebuild_release_index.py"
+          done
